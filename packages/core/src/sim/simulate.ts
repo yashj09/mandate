@@ -1,5 +1,6 @@
-import { decodeErrorResult, type Address, type Hex, type PublicClient } from "viem";
+import type { Address, Hex, PublicClient } from "viem";
 import { MandateAccountAbi } from "../abi/MandateAccount.ts";
+import { describeError } from "../errors.ts";
 import type { Step } from "../plan/schema.ts";
 
 export interface StepSimulation {
@@ -8,16 +9,6 @@ export interface StepSimulation {
   notes: string[];
   /** true when only static checks ran because earlier steps have not executed yet */
   deferred?: boolean;
-}
-
-function decodeRevert(data: Hex | undefined): string | undefined {
-  if (!data || data === "0x") return undefined;
-  try {
-    const d = decodeErrorResult({ abi: MandateAccountAbi, data });
-    return `${d.errorName}(${(d.args ?? []).map(String).join(", ")})`;
-  } catch {
-    return data.slice(0, 10);
-  }
 }
 
 function selectorOf(data: Hex): Hex {
@@ -63,8 +54,8 @@ export async function simulateStep(
       notes.push("calls succeed as a batch; guardian signature required before execution");
     }
     return { ok: true, notes };
-  } catch (e: any) {
-    const data: Hex | undefined = e?.cause?.data ?? e?.data ?? e?.cause?.cause?.data;
-    return { ok: false, revertReason: decodeRevert(typeof data === "string" ? data : undefined) ?? e?.shortMessage ?? String(e), notes };
+  } catch (e) {
+    // describeError decodes the account's custom errors, including the inner reason inside CallFailed.
+    return { ok: false, revertReason: describeError(e), notes };
   }
 }

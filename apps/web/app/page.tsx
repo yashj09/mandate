@@ -34,7 +34,7 @@ export default function LandingPage() {
         <div>
           <Sticky rotate={3} className="mb-6">bounded delegation for AI agents</Sticky>
           <SketchHeading as="h1" className="text-5xl md:text-6xl">
-            Claude spends.{" "}
+            Your agent spends.{" "}
             You set the{" "}
             <span className="whitespace-nowrap">
               <span className="relative inline-block">
@@ -45,7 +45,7 @@ export default function LandingPage() {
             </span>
           </SketchHeading>
           <p className="mt-6 max-w-2xl text-xl leading-relaxed text-fg/80 first-letter:float-left first-letter:mr-2 first-letter:font-heading first-letter:text-6xl first-letter:leading-none md:text-2xl">
-            Claude executes real on-chain financial actions for you, inside limits you set, with a hardware tap for anything irreversible.
+            Your AI agent executes real on-chain financial actions for you, inside limits you set, with a hardware tap for anything irreversible.
           </p>
           <div className="relative mt-10 flex flex-wrap items-center gap-4">
             <Scribble.Arrow className="absolute -top-20 -left-6 hidden h-24 w-32 animate-bounce-slow text-fg md:block" />

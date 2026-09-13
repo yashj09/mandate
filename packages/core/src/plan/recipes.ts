@@ -5,6 +5,7 @@ import type { MandateClient } from "../client.ts";
 import { readCometPosition } from "../exec/compound.ts";
 import { usdcBalance } from "../exec/cctp.ts";
 import type { Intent, Plan, RepayIntent } from "./schema.ts";
+import { splitRepayment } from "./repayment-math.ts";
 
 /**
  * Recipes compose built-in actions into the two flows the reference app ships. They are ordinary `client.plan` calls —
@@ -25,24 +26,27 @@ export const recipes = {
     return client.plan(reqs, { id: opts.id, intent, venueId: opts.venueId ?? "compound-v3-base-sepolia", venueExplanation: opts.venueExplanation });
   },
 
-  /** Bridge USDC back from Arc if it is there → repay Compound → withdraw freed collateral when cleared → close the intent. */
+  /** Bridge USDC back from Arc if Base cannot cover it → repay Compound → withdraw freed collateral when cleared → close the intent. */
   async repayment(client: MandateClient, intent: RepayIntent, opts: { id?: string } = {}): Promise<Plan> {
     const base = client.pub(BASE_SEPOLIA.chainId), arc = client.pub(ARC_TESTNET.chainId);
-    const pos = await readCometPosition(base, client.account);
-    if (pos.debtUsdc === 0n) throw new Error("no Compound debt to repay");
-    const requested = parseUnits(intent.amountUsdc.toString(), 6);
-    const repayAmt = requested > pos.debtUsdc ? pos.debtUsdc : requested;
     // On Arc the ERC-20 view and the native balance are the same USDC — read exactly one of them.
-    const arcUsdc6 = await usdcBalance(arc, ARC_TESTNET.usdc, client.account);
-    const fromArc = arcUsdc6 >= repayAmt;
+    const [pos, baseUsdc, arcUsdc] = await Promise.all([
+      readCometPosition(base, client.account),
+      usdcBalance(base, BASE_SEPOLIA.usdc, client.account),
+      usdcBalance(arc, ARC_TESTNET.usdc, client.account),
+    ]);
+    const { repayAmt, bridgeAmt, note } = splitRepayment({ requested: parseUnits(intent.amountUsdc.toString(), 6), debt: pos.debtUsdc, baseUsdc, arcUsdc });
     const clears = repayAmt >= pos.debtUsdc;
     const reqs: ActionRequest[] = [];
-    if (fromArc) {
-      reqs.push({ kind: "bridge_burn", params: { amountUsdc6: repayAmt, fromChainId: ARC_TESTNET.chainId, toChainId: BASE_SEPOLIA.chainId } });
+    if (bridgeAmt > 0n) {
+      reqs.push({ kind: "bridge_burn", params: { amountUsdc6: bridgeAmt, fromChainId: ARC_TESTNET.chainId, toChainId: BASE_SEPOLIA.chainId } });
       reqs.push({ kind: "bridge_relay", params: { fromChainId: ARC_TESTNET.chainId, toChainId: BASE_SEPOLIA.chainId } });
     }
     reqs.push({ kind: "repay", params: { amountUsdc6: repayAmt, withdrawWethWei: intent.withdrawCollateral && clears ? pos.collateralWeth : 0n } });
     if (intent.repaymentId !== undefined) reqs.push({ kind: "mark_repaid", params: { repaymentId: intent.repaymentId } });
-    return client.plan(reqs, { id: opts.id ?? `repay-${Date.now().toString(36)}`, intent, venueId: "compound-v3-base-sepolia", venueExplanation: fromArc ? "Funds come back from Arc over CCTP, then repay Compound v3 on Base Sepolia." : "Repaying from USDC already on Base Sepolia." });
+    const source = bridgeAmt > 0n
+      ? `Bridges ${(Number(bridgeAmt) / 1e6).toFixed(2)} USDC back from Arc over CCTP (covers the CCTP fee), then repays Compound v3 on Base Sepolia.`
+      : "Repaying from USDC already on Base Sepolia.";
+    return client.plan(reqs, { id: opts.id ?? `repay-${Date.now().toString(36)}`, intent, venueId: "compound-v3-base-sepolia", venueExplanation: note ? `${note} ${source}` : source });
   },
 };

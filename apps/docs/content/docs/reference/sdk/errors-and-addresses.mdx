@@ -17,6 +17,7 @@ catch (e) { console.log(describeError(e)); }   // "PerTxCapExceeded(5000000000, 
 | `decodeMandateError(e)` | `MandateError \| null`; `code` is the contract's custom error name, `details.args` the decoded arguments |
 | `extractRevertData(e)` | the `0x…` revert data buried in a viem error chain |
 | `describeError(e)` | decoded custom error, else viem's short message, else `String(e)` |
+| `decodeRevertData(hex)`, `describeInnerRevert(hex)` | decode raw revert data; `CallFailed` is expanded to the inner call's reason, e.g. `CallFailed(call 1: ERC20InsufficientBalance(0x…, 2000000, 73007631))` |
 
 `client.execute` already applies this; `StepResult.error` is human-readable. The custom errors are listed in [Contracts](/docs/reference/contracts#errors).
 

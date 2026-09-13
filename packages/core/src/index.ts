@@ -6,6 +6,7 @@ export * from "./errors.ts";
 export * from "./actions/index.ts";
 export * from "./plan/schema.ts";
 export * from "./plan/recipes.ts";
+export * from "./plan/repayment-math.ts";
 export * from "./store/index.ts";
 export * from "./guardian/index.ts";
 export * from "./chains.ts";

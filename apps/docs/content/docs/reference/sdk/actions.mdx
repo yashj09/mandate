@@ -55,6 +55,8 @@ import { recipes } from "@yashjain99/mandate-sdk";
 | Recipe | Steps |
 |---|---|
 | `recipes.liquidity(client, intent, opts?)` | `supply_borrow` → `bridge_burn` (Base→Arc) → `bridge_relay` → `pay` (if `recipient`) → `schedule_repayment` |
-| `recipes.repayment(client, repayIntent, opts?)` | `bridge_burn` (Arc→Base, only if USDC is on Arc) → `bridge_relay` → `repay` → `mark_repaid` (if `repaymentId`) |
+| `recipes.repayment(client, repayIntent, opts?)` | `bridge_burn` (Arc→Base, only for the shortfall Base cannot cover, plus fee headroom) → `bridge_relay` → `repay` → `mark_repaid` (if `repaymentId`) |
 
 `opts` carries `venueId`, `venueExplanation`, `borrowAprPct` and an optional `id`. Recipes read balances from exactly one source per chain and derive `requiresGuardian` from the live policy.
+
+The repayment split is the pure function `splitRepayment({ requested, debt, baseUsdc, arcUsdc })`: it repays from Base when Base holds enough, otherwise bridges the shortfall from Arc with headroom for the CCTP fee, and when both chains together cannot cover the request it repays what is available and says so in `venueExplanation` instead of drafting a step that would revert.

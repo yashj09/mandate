@@ -18,7 +18,7 @@ flowchart LR
   A1 & A2 & A3 & A4 & A5 --> P[Plan: steps with calls, maxUsdcOut, requiresGuardian]
 ```
 
-Two recipes ship: `recipes.liquidity` (borrow, bridge, pay, schedule) and `recipes.repayment` (bridge back if needed, repay, withdraw collateral, mark repaid). You can also call `client.plan(requests, opts)` with your own list of action requests.
+Two recipes ship: `recipes.liquidity` (borrow, bridge, pay, schedule) and `recipes.repayment` (bridge back from Arc only for what Base cannot cover, repay, withdraw collateral, mark repaid). Recipes check real balances before drafting: asking to repay more than the account holds across both chains yields a plan for the available amount with an explanation, not a step that reverts. You can also call `client.plan(requests, opts)` with your own list of action requests.
 
 ## Step kinds
 

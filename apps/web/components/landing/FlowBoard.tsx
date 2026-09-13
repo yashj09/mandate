@@ -11,7 +11,7 @@ type Beat = { icon: LucideIcon; title: string; detail: string; /** irreversible:
 
 const BEATS: Beat[] = [
   { icon: FileSignature, title: "You set a mandate", detail: "$100 / tx · $500 / day · 7 days · signed by you" },
-  { icon: Bot, title: "Claude borrows on its own", detail: "wrap → supply → borrow 100 USDC · reversible" },
+  { icon: Bot, title: "The agent borrows on its own", detail: "wrap → supply → borrow 100 USDC · reversible" },
   { icon: Hand, title: "Stops before the bridge", detail: "a CCTP burn can't be undone", gate: true },
   { icon: Fingerprint, title: "Your Ledger shows the text", detail: "plain words, clear-signed" },
   { icon: CheckCircle2, title: "Tap. Settled on Arc.", detail: "100 USDC to the payee in ~8s" },

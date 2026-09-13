@@ -12,7 +12,7 @@ A `MandateAccount` is a user-owned smart account with three roles. The contract,
 | Owner | The person, with a browser wallet | Set or revoke the mandate, edit the allow-list, rotate agent and guardian, withdraw anything, call `ownerExecute` | |
 | Agent | A hot wallet the model drives (local key or Circle developer-controlled wallet) | Call `execute` with allow-listed calls inside the caps; call `executeWithGuardian` with a valid guardian signature; send permissionless transactions from its own wallet (CCTP `receiveMessage`) | Move value beyond the caps; call anything not allow-listed; bridge or pay a third party without the guardian; change any setting |
 | Guardian | A Ledger | Approve one specific step: account, chain, plan, step, max USDC out, calls hash, deadline, nonce | Approve a target the owner has not allow-listed; reuse a signature; exceed the approved maximum |
-| Model | Claude | Read data, draft an intent, explain, sequence tool calls | Produce calldata, sign, or see a key |
+| Model | the LLM driving the agent | Read data, draft an intent, explain, sequence tool calls | Produce calldata, sign, or see a key |
 
 ## Trust boundaries
 

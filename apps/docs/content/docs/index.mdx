@@ -1,6 +1,6 @@
 ---
 title: Mandate
-description: Claude executes real on-chain financial actions for you, inside limits you set, with a hardware tap for anything irreversible.
+description: Your AI agent executes real on-chain financial actions for you, inside limits you set, with a hardware tap for anything irreversible.
 ---
 
 Mandate is bounded delegation for AI agents. You own a smart account. You decide which contract calls the agent may make, how much USDC may leave per transaction and per day, and which actions need a tap on your Ledger. The agent plans and executes inside those limits. The contract enforces them, not the model.
@@ -16,7 +16,7 @@ Mandate is bounded delegation for AI agents. You own a smart account. You decide
 
 ```mermaid
 flowchart TB
-  U[You: chat or MCP] --> A[Claude drafts an intent]
+  U[You: chat or MCP] --> A[The model drafts an intent]
   A --> P[Deterministic planner builds typed steps]
   P --> S[Simulation against live chain state]
   S --> X[Executor sends each step]
@@ -35,7 +35,7 @@ flowchart TB
 | SDK | `@yashjain99/mandate-sdk` | Plan, simulate, execute, approvals, stores, guardians, market data |
 | AI tools | `@yashjain99/mandate-ai` | Vercel AI SDK tools with a tool-approval policy, MCP registration, system prompt |
 | MCP server | `@yashjain99/mandate-mcp` | `npx @yashjain99/mandate-mcp` for Claude Desktop, Cursor or any MCP client |
-| Console | `apps/web` | Next.js chat and owner console with Ledger WebHID approvals, live at [creditline-web.vercel.app](https://creditline-web.vercel.app) |
+| Console | `apps/web` | Next.js chat and owner console with Ledger WebHID approvals, live at [mandateagents.vercel.app](https://mandateagents.vercel.app) |
 | Skills | `skills/` | `mandate-agent` for operating an account, `mandate-integrate` for adding Mandate to your agent |
 
 Built for ETHOnline 2026 with [Arc and Circle](/docs/sponsors/arc-circle), [The Graph](/docs/sponsors/the-graph) and [Ledger](/docs/sponsors/ledger).

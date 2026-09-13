@@ -32,7 +32,7 @@ The reverse leg, repayment, works the same way: bridge back, repay Compound, wit
 
 ## Where the model stops
 
-Claude only produces an *intent*: amount, recipient, constraints, repayment horizon. Everything after that is deterministic TypeScript in the SDK. The model never writes calldata, never sees a private key, and cannot lift a limit. If it tries to exceed the mandate the contract reverts with a named error and the agent explains why.
+The model only produces an *intent*: amount, recipient, constraints, repayment horizon. Everything after that is deterministic TypeScript in the SDK. The model never writes calldata, never sees a private key, and cannot lift a limit. If it tries to exceed the mandate the contract reverts with a named error and the agent explains why.
 
 <Callout title="Testnet only, today">
 All contracts are on Base Sepolia and Arc testnet with real Circle testnet USDC. The Arc mainnet path is documented in [Arc mainnet checklist](/docs/guides/arc-mainnet).
