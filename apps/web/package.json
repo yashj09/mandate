@@ -28,7 +28,9 @@
     "viem": "^2.56.3",
     "zod": "^4.5.4",
     "@yashjain99/mandate-ai": "workspace:*",
-    "@yashjain99/mandate-sdk": "workspace:*"
+    "@yashjain99/mandate-sdk": "workspace:*",
+    "@upstash/ratelimit": "^2.0.5",
+    "@upstash/redis": "^1.35.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.0",

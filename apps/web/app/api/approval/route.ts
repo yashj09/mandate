@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import type { Hex } from "viem";
-import { getClient } from "@/lib/agent";
+import { getClientAsync } from "@/lib/agent";
 
 /** GET /api/approval?planId=…&step=N → the exact text the Ledger must sign (idempotent per plan/step/nonce). */
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const client = getClient();
+  const client = await getClientAsync();
   const plan = await client.store.plans.get(url.searchParams.get("planId") ?? "");
   const s = plan?.steps.find((x) => x.index === Number(url.searchParams.get("step")));
   if (!plan || !s) return NextResponse.json({ error: "unknown plan/step" }, { status: 404 });
@@ -20,7 +20,7 @@ export async function GET(req: Request) {
 /** POST /api/approval { planId, step, signature } → verified against the server-built text and on-chain guardian. */
 export async function POST(req: Request) {
   const body = (await req.json()) as { planId: string; step: number; signature: Hex };
-  const client = getClient();
+  const client = await getClientAsync();
   const plan = await client.store.plans.get(body.planId);
   const s = plan?.steps.find((x) => x.index === body.step);
   if (!plan || !s) return NextResponse.json({ error: "unknown plan/step" }, { status: 404 });

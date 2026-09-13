@@ -1,30 +1,40 @@
 {
   "name": "@yashjain99/mandate-sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": false,
   "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "development": "./src/index.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./ledger-web": {
       "types": "./dist/ledger-web.d.ts",
       "development": "./src/ledger-web.ts",
-      "import": "./dist/ledger-web.js"
+      "import": "./dist/ledger-web.js",
+      "default": "./dist/ledger-web.js"
     },
     "./abi": {
       "types": "./dist/abi.d.ts",
       "development": "./src/abi.ts",
-      "import": "./dist/abi.js"
+      "import": "./dist/abi.js",
+      "default": "./dist/abi.js"
     },
     "./chains": {
       "types": "./dist/chains.d.ts",
       "development": "./src/chains.ts",
-      "import": "./dist/chains.js"
+      "import": "./dist/chains.js",
+      "default": "./dist/chains.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./store-redis": {
+      "types": "./dist/store-redis.d.ts",
+      "development": "./src/store-redis.ts",
+      "import": "./dist/store-redis.js",
+      "default": "./dist/store-redis.js"
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -51,7 +61,8 @@
     "@ledgerhq/context-module": "^2.5.0",
     "rxjs": "^7.8.2",
     "@circle-fin/developer-controlled-wallets": "^10.8.0",
-    "dotenv": "^17.2.0"
+    "dotenv": "^17.2.0",
+    "@upstash/redis": "^1.35.0"
   },
   "description": "Bounded delegation for AI agents: a smart account with on-chain caps, an allow-list policy and a hardware guardian; planner, simulator, executor, approvals and market data.",
   "license": "MIT",
@@ -82,6 +93,9 @@
       "optional": true
     },
     "@circle-fin/developer-controlled-wallets": {
+      "optional": true
+    },
+    "@upstash/redis": {
       "optional": true
     }
   },

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getClient, summarizePlan } from "@/lib/agent";
+import { getClientAsync, summarizePlan } from "@/lib/agent";
 
 export async function GET(req: Request) {
-  const client = getClient();
+  const client = await getClientAsync();
   const id = new URL(req.url).searchParams.get("id");
   if (id) {
     const p = await client.store.plans.get(id);

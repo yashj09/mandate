@@ -10,10 +10,10 @@ export async function POST(req: Request) {
     model: model(),
     system: SYSTEM_PROMPT,
     messages: await convertToModelMessages(messages),
-    tools: getTools(),
-    stopWhen: stepCountIs(16),
+    tools: await getTools(),
+    stopWhen: stepCountIs(8), // keeps one request inside the 300s function window; the UI continues on the next turn
     // Guardian steps pause here; the UI collects the Ledger signature via /api/approval, then approves.
-    toolApproval: getToolApproval(),
+    toolApproval: await getToolApproval(),
     experimental_toolApprovalSecret: process.env.TOOL_APPROVAL_SECRET ?? "dev-only-secret-change-me",
   });
   return createUIMessageStreamResponse({ stream: toUIMessageStream({ stream: result.stream }) });
