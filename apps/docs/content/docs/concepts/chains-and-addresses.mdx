@@ -1,0 +1,51 @@
+---
+title: Chains and addresses
+description: Base Sepolia for borrowing, Arc for settlement, CCTP v2 between them, and one address on both.
+---
+
+## The two chains
+
+| | Base Sepolia | Arc testnet |
+|---|---|---|
+| Chain id | 84532 | 5042002 |
+| Role | borrow real Circle USDC on Compound v3 against WETH | settle: pay recipients, record repayments |
+| Gas token | ETH | **USDC** (18 decimals natively) |
+| USDC | ERC-20 `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | native; ERC-20 view at `0x3600000000000000000000000000000000000000` |
+| CCTP domain | 6 | 26 |
+| Explorer | [sepolia.basescan.org](https://sepolia.basescan.org) | [testnet.arcscan.app](https://testnet.arcscan.app) |
+| Default RPC | `https://sepolia.base.org` | `https://rpc.testnet.arc.io` |
+
+The SDK's `chains` object exports viem `Chain` definitions for both (plus Arbitrum Sepolia for future Aave support), reading `BASE_SEPOLIA_RPC` and `ARC_TESTNET_RPC` when set.
+
+## USDC on Arc
+
+Because USDC is the gas token, an account's USDC balance is its native balance. The ERC-20 at `0x3600…` is a view over the same funds. Anything that measures balances must count one or the other, never both: the contract's `_usdcBalance`, the repayment recipe, and the receipt parser that reads a mint amount all pick a single source. Payments on Arc default to native transfers (`mode: "native"`), which is why the wildcard `0x00000000` policy exists there.
+
+## CCTP v2
+
+| Contract | Address (same on both chains) |
+|---|---|
+| TokenMessengerV2 | `0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA` |
+| MessageTransmitterV2 | `0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275` |
+| Attestation service | `https://iris-api-sandbox.circle.com` |
+
+Burns use Fast Transfer (`minFinalityThreshold` 1000), which attests in about eight seconds from Base Sepolia. The relay is fetched by burn transaction hash; if the hash was lost the SDK recovers it from the account's `StepExecuted` logs, and the mint amount is read from the receipt's `Transfer` logs rather than polled.
+
+## Same address on both chains
+
+`MandateFactory` is deployed through the canonical CREATE2 deployer at `0x4e59b44847b379578588920cA78FbF26c0B4956C` with a fixed salt, then **configured** (USDC address, native-is-USDC flag) in a separate transaction. Chain-specific data is therefore not in the init code, the factory's init-code hash is identical everywhere, and so is every account's. The account is its own CCTP `mintRecipient` on Arc, and the agent, guardian and policies read identically on both chains.
+
+The SDK checks this: `client.guardian()` reads the guardian on every configured chain and throws if they disagree, so an approval sheet never shows a device address that the destination chain would reject.
+
+## Compound v3 on Base Sepolia
+
+| Contract | Address |
+|---|---|
+| Comet cUSDCv3 | `0x571621Ce60Cebb0c1D442B5afb38B1663C6Bf017` |
+| WETH | `0x4200000000000000000000000000000000000006` |
+
+A borrow is a `withdraw` of the base asset. Collateral rule of thumb at a target health factor of 1.6: about 0.055 ETH per 100 USDC borrowed at a 3,500 USD ETH price.
+
+## Mainnet
+
+Arc mainnet launches after the hackathon. `Deploy.s.sol` already branches on chain id 5042 and reads `ARC_USDC` from the environment; redeploying with the same salt gives the same addresses. See [Arc mainnet checklist](/docs/guides/arc-mainnet).

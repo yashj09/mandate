@@ -1,0 +1,70 @@
+---
+title: Guardian approvals
+description: Why the Ledger signs plain text, what the text binds, and how the contract verifies it.
+---
+
+Steps that move value irreversibly, a CCTP burn or a payment to a third party, need the guardian. The guardian is normally a Ledger, and what it signs is a nine-line ASCII message.
+
+## Why text and not calldata
+
+A Ledger clear-signs a contract call only when it has descriptors for that contract. Mandate's contracts have none, so a raw `executeWithGuardian` call would force **blind signing**, a hash on the screen and a settings toggle most users should never enable. EIP-712 typed data has the same problem without registered filters.
+
+EIP-191 personal messages are different: the Ethereum app shows the full text and lets the user page through it. So the guardian signs text, and the contract rebuilds the exact same text from the call's own typed arguments and recovers the signer. What the device displayed is what executes.
+
+## The message
+
+```text
+Mandate approval
+Account: 0x58612ce0945666cf58ca7e24808625a3cf10c5c3
+Chain: 84532
+Plan: 0x9f2b…c1a0
+Step: 2
+Max USDC out: 10.000000
+Calls: 0x7a41…e3d2
+Deadline: 1788561704
+Nonce: 3
+```
+
+| Line | Binds |
+|---|---|
+| Account | this account only; no reuse on another account |
+| Chain | this chain only; no cross-chain replay of identical calls |
+| Plan, Step | one step of one plan |
+| Max USDC out | the binding maximum, enforced on measured outflow |
+| Calls | `keccak256(abi.encode(calls))`: every target, value and byte of calldata |
+| Deadline | validity window (the SDK default is 15 minutes) |
+| Nonce | the account's `guardianNonce` at signing; consumed on use |
+
+The full specification, with test vectors, is in [Approval message spec v1](/docs/reference/approval-spec).
+
+## Verification on-chain
+
+```solidity
+bytes32 callsHash = keccak256(abi.encode(calls));
+string memory text = approvalText(planId, step, maxUsdcOut, callsHash, deadline, guardianNonce);
+bytes32 digest = MessageHashUtils.toEthSignedMessageHash(bytes(text));
+if (ECDSA.recover(digest, signature) != guardian) revert BadGuardianSignature();
+if (block.timestamp > deadline) revert ApprovalExpired();
+guardianNonce += 1;
+```
+
+Then the calls run under `_runMeasured`, and `spent > maxUsdcOut` reverts with `MaxOutExceeded`. The per-step `executed` flag is set first, so the same signature can never run the step twice even if the nonce logic had a flaw.
+
+## The flow in each surface
+
+**Console.** `execute_step` is a tool with an approval policy. When a guardian step is reached the model pauses; the browser fetches `GET /api/approval?planId&step`, which builds and caches the text server-side, and opens the approval sheet. The user clicks *Approve on Ledger*, Chrome prompts for the device over WebHID, the Ledger shows the text, the user approves. The signature is posted to `POST /api/approval` with only `{ planId, step, signature }`; the server verifies it against the cached text and the on-chain guardian, stores it, and lets the tool continue.
+
+**MCP.** Request and response clients cannot pause, so the pause is explicit: `prepare_step` returns the text; the human signs it wherever their Ledger is (the console's approval sheet, or any wallet that can `personal_sign`); `submit_guardian_signature` stores it; `execute_step` runs.
+
+**SDK.** `client.approvals.request(plan, step)` builds the text, `client.approvals.submit(plan, step, signature)` verifies and stores it, or pass a `GuardianSigner` (`ledgerNodeGuardian()` over USB, `ledgerWebGuardian()` in a browser, `localGuardian(key)` in tests) and `execute` signs inline.
+
+## What the guardian cannot do
+
+- Approve a call whose `(target, selector)` the owner has not allow-listed. `CallNotAllowed` fires regardless of the signature.
+- Reuse a signature. The nonce and the per-step `executed` flag both prevent it.
+- Approve more than shown. `Max USDC out` is enforced on measured outflow.
+- Change any setting. Only the owner can.
+
+## Stale approvals
+
+An approval is bound to a nonce. If another guardian step lands first, or the deadline passes, the stored signature is dead. The SDK checks the live nonce and deadline before sending and evicts stale approvals so the user is asked to sign again rather than watching a doomed transaction.

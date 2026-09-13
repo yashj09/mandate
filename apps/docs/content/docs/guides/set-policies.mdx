@@ -1,0 +1,62 @@
+---
+title: Set caps and policies
+description: Everything the owner controls, from Foundry, cast, the SDK or the console.
+---
+
+Only the owner can change a mandate. Four ways to do it.
+
+## From the console
+
+The **Mandate** page connects the owner's browser wallet (MetaMask or Rabby with the owner key) and offers per-transaction cap, daily cap, expiry and **Revoke** on each chain. It adds the Base Sepolia and Arc networks if your wallet lacks them. Individual policy entries are not editable in the UI today; use one of the methods below.
+
+## From Foundry
+
+```bash
+cd contracts && set -a && source ../.env && set +a
+PER_TX_CAP=200000000 DAILY_CAP=1000000000 EXPIRY_DAYS=14 \
+forge script script/SetPolicy.s.sol --rpc-url base_sepolia --broadcast
+```
+
+`SetPolicy.s.sol` sets the mandate and applies the shipped preset for the chain it runs on. Run it on both chains.
+
+## From cast
+
+```bash
+# caps: 100 USDC / 500 USDC, expiry in 7 days
+cast send $ACCOUNT "setMandate(uint128,uint128,uint64)" 100000000 500000000 $(( $(date +%s) + 7*86400 )) \
+  --private-key $OWNER_PRIVATE_KEY --rpc-url $BASE_SEPOLIA_RPC
+
+# block one recipient while keeping wildcard native payments on Arc
+cast send $ACCOUNT "setPolicy(address,bytes4,bool,bool)" 0xBadRecipient… 0x00000000 false false \
+  --private-key $OWNER_PRIVATE_KEY --rpc-url $ARC_TESTNET_RPC
+
+# rotate the guardian (both chains!)
+cast send $ACCOUNT "setGuardian(address)" $LEDGER --private-key $OWNER_PRIVATE_KEY --rpc-url $BASE_SEPOLIA_RPC
+cast send $ACCOUNT "setGuardian(address)" $LEDGER --private-key $OWNER_PRIVATE_KEY --rpc-url $ARC_TESTNET_RPC
+
+# emergency stop
+cast send $ACCOUNT "revokeMandate()" --private-key $OWNER_PRIVATE_KEY --rpc-url $BASE_SEPOLIA_RPC
+```
+
+## From the SDK
+
+`ownerEncoders` returns calldata you can sign with any wallet, including a Ledger through viem or a browser provider:
+
+```ts
+import { ownerEncoders, policyPresets } from "@yashjain99/mandate-sdk";
+
+const data = ownerEncoders.setPolicies(policyPresets.forChain(84532));
+await walletClient.sendTransaction({ to: account, data });
+
+await walletClient.sendTransaction({ to: account, data: ownerEncoders.setMandate(100_000000n, 500_000000n, BigInt(expiry)) });
+```
+
+Available encoders: `setMandate`, `revokeMandate`, `setPolicies`, `setPolicy`, `clearPolicy`, `setGuardian`, `setAgent`, `withdrawNative`, `withdrawToken`.
+
+## Rules that keep you safe
+
+- **Same guardian on every chain.** The SDK refuses to build approvals if the chains disagree.
+- **Same agent on every chain.** Otherwise one chain's steps fail with `NotAgent`.
+- **Expiry is your dead-man switch.** A mandate that lapses stops the agent without a transaction.
+- **Revoke, then investigate.** `revokeMandate` is one call and makes every agent path revert with `MandateInactive`.
+- **Withdraw is always yours.** `withdrawToken` and `withdrawNative` ignore the mandate entirely.

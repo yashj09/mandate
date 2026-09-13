@@ -1,0 +1,73 @@
+---
+title: Mandates and caps
+description: perTxCap, dailyCap and expiry, enforced on measured gross outflow.
+---
+
+## The mandate struct
+
+```solidity
+struct Mandate {
+  uint128 perTxCap;  // USDC, 6 decimals
+  uint128 dailyCap;  // USDC, 6 decimals, rolling 24 h window
+  uint64  expiry;    // unix seconds; 0 = no active mandate
+}
+```
+
+Only the owner calls `setMandate(perTxCap, dailyCap, expiry)` or `revokeMandate()`. With `expiry == 0` every agent call reverts with `MandateInactive`; after `expiry` with `MandateExpired`. The demo account uses 100 USDC per transaction, 500 USDC per day, seven days.
+
+## Measured, not declared
+
+`execute` does not trust any number the agent passes. It snapshots the account's USDC balance, runs the calls one by one, and after each call adds any *decrease* to `spent`:
+
+```solidity
+function _runMeasured(Call[] calldata calls) internal returns (uint256 spent) {
+  uint256 bal = _usdcBalance();
+  for (uint256 i; i < calls.length; ++i) {
+    (bool ok, bytes memory ret) = calls[i].target.call{value: calls[i].value}(calls[i].data);
+    if (!ok) revert CallFailed(i, ret);
+    uint256 after_ = _usdcBalance();
+    if (after_ < bal) spent += bal - after_;
+    bal = after_;
+  }
+}
+```
+
+Two consequences:
+
+- **Inflows never offset outflows.** A step that borrows 500 USDC and then pays 90 USDC is charged 90. An earlier version measured the net delta across the whole step and would have charged 0; the code review caught it and the unit test now asserts 90.
+- **A borrow costs nothing against the cap.** Borrowing brings USDC in. The cap bounds what leaves.
+
+The per-transaction check is `spent <= perTxCap`. The daily check adds `spent` to `dailySpent` after rolling the window when 24 hours have passed since `windowStart`. `dailyRemaining()` is a view that accounts for the rollover.
+
+## What counts as USDC
+
+On Base Sepolia, USDC is an ERC-20 and the account measures `balanceOf(this)`.
+
+On Arc, USDC is the gas token. The chain also exposes an ERC-20 view of the native balance at `0x3600000000000000000000000000000000000000`. These are the same funds, so the account measures exactly one of them:
+
+```solidity
+function _usdcBalance() internal view returns (uint256) {
+  if (NATIVE_IS_USDC) return address(this).balance / 1e12;   // 18-dec native → 6-dec
+  return IERC20(USDC).balanceOf(address(this));
+}
+```
+
+The first live run on Arc counted both and reported every outflow twice (`MaxOutExceeded(80, 40)` for a 40 USDC payment). Fixed in the contract, the recipes and the receipt parsing.
+
+## Guardian steps and the caps
+
+`executeWithGuardian` bypasses `perTxCap` and `dailyCap` and does not add to `dailySpent`. The binding figure is `maxUsdcOut`, the number the human read on the Ledger screen: if measured outflow exceeds it the step reverts with `MaxOutExceeded(spent, maxOut)`. The allow-list still applies.
+
+This is deliberate. The caps bound what the agent may do *alone*. A human approving a specific amount on a hardware device is a stronger statement than a standing daily budget.
+
+## Errors you will see
+
+| Error | Meaning | Typical fix |
+|---|---|---|
+| `MandateInactive()` | expiry is 0 | owner calls `setMandate` |
+| `MandateExpired()` | now is past expiry | owner extends |
+| `PerTxCapExceeded(spent, cap)` | one step moved more than allowed | smaller amount, or owner raises the cap |
+| `DailyCapExceeded(spent, cap)` | the rolling window is exhausted | wait, or owner raises the cap |
+| `MaxOutExceeded(spent, maxOut)` | a guardian step moved more than approved | re-plan; this indicates a mismatch between plan and reality |
+
+The SDK decodes these into readable strings with `describeError`, and the agent is instructed to treat them as the mandate working as intended, never as something to work around.

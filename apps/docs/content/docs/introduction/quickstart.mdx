@@ -1,0 +1,79 @@
+---
+title: Quickstart
+description: Three ways in, from zero setup to your own account.
+---
+
+## 1. Talk to the live agent
+
+Open [creditline-web.vercel.app](https://creditline-web.vercel.app), go to **Chat**, and type:
+
+```text
+Show my positions and remaining mandate.
+```
+
+Then:
+
+```text
+I need 5 USDC on Arc to pay 0x000000000000000000000000000000000000dEaD. Don't sell my ETH.
+```
+
+The agent reads positions, fetches rates from The Graph, drafts a five-step plan, simulates it and executes the borrow on Compound v3 by itself. It stops at the CCTP bridge step and asks for the guardian. That guardian is a specific Ledger, so as a visitor you will see the approval sheet and the exact text the device would display, but you cannot sign it. That is the point.
+
+The public console is rate limited and its mandate is small: 100 USDC per transaction, 500 USDC per day. See [Operate the console](/docs/guides/operate).
+
+## 2. Run the MCP server, read-only
+
+No keys are needed to read the public account. With Node 22 installed:
+
+```bash
+MANDATE_ACCOUNT=0x58612CE0945666cf58CA7e24808625a3cF10C5c3 npx -y @yashjain99/mandate-mcp
+```
+
+Without `AGENT_PRIVATE_KEY` the server starts in read-only mode: `get_positions`, `get_markets`, `draft_plan`, `simulate_plan`, `get_plan` and `get_audit` work; `execute_step` returns a clear "read-only" error. Add `GRAPH_API_KEY` to get live rates instead of the on-chain Compound rate alone.
+
+Claude Desktop configuration (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "mandate": {
+      "command": "npx",
+      "args": ["-y", "@yashjain99/mandate-mcp"],
+      "env": { "MANDATE_ACCOUNT": "0x58612CE0945666cf58CA7e24808625a3cF10C5c3", "GRAPH_API_KEY": "…" }
+    }
+  }
+}
+```
+
+Ask Claude: *"What is the cheapest place to borrow 50 USDC right now, and what would a plan look like?"*
+
+## 3. Use the SDK in Node
+
+```bash
+npm i @yashjain99/mandate-sdk viem
+```
+
+```ts
+import { createMandate, memoryStore, ReadOnlyAgentWallet, chains } from "@yashjain99/mandate-sdk";
+
+const account = "0x58612CE0945666cf58CA7e24808625a3cF10C5c3";
+const client = createMandate({
+  account,
+  wallet: new ReadOnlyAgentWallet(async () => "0xd52788d766acd8cB2730DCa871037e7F6cB49aD0"),
+  store: memoryStore(),
+  graphApiKey: process.env.GRAPH_API_KEY,
+});
+
+console.log(await client.positions());
+const { ranked } = await client.markets(50);
+console.log(ranked.recommended, ranked.explanation);
+```
+
+To execute, you need an account whose agent key you hold. That is the next step.
+
+## 4. Your own account
+
+1. [Deploy an account](/docs/guides/deploy-account) on Base Sepolia and Arc with Foundry. Ten minutes plus faucet time.
+2. [Set caps and policies](/docs/guides/set-policies) as the owner.
+3. [Connect your Ledger](/docs/guides/ledger) as guardian.
+4. Run the [console locally](/docs/guides/run-console) or wire the [tools into your own agent](/docs/guides/build-an-agent).

@@ -1,0 +1,57 @@
+---
+title: Node script without an LLM
+description: Plan, simulate and execute a liquidity flow with the SDK alone.
+---
+
+Mandate does not need a model. The recipes are ordinary functions.
+
+```ts
+import { createMandateFromEnv, fileStore, localGuardian, recipes } from "@yashjain99/mandate-sdk";
+
+const client = createMandateFromEnv({
+  store: fileStore(".mandate"),
+  guardian: localGuardian(process.env.GUARDIAN_PRIVATE_KEY as `0x${string}`),   // tests only; use ledgerNodeGuardian() for real
+});
+
+const positions = await client.positions();
+console.log(positions.compound.healthFactor, positions.mandate.dailyRemainingUsdc);
+
+const { ranked } = await client.markets(3);
+console.log(ranked.recommended?.venueId, ranked.explanation);
+
+const plan = await recipes.liquidity(
+  client,
+  { kind: "liquidity", amountUsdc: 3, destinationChainId: 5042002, recipient: "0x…", constraints: { doNotSell: ["ETH"] }, repayInDays: 7 },
+  { venueId: ranked.recommended?.venueId, borrowAprPct: ranked.recommended?.borrowAprPct },
+);
+
+const sim = await client.simulate(plan);
+if (sim.failed) throw new Error("simulation failed");
+
+await client.executeAll(plan, (r) => console.log(r.ok ? `✓ ${r.step} ${r.summary} ${r.explorer ?? ""}` : `✗ ${r.step} ${r.error}`));
+```
+
+Run the shipped version, which reads the workspace `.env`:
+
+```bash
+pnpm --filter example-node-script start          # AMOUNT_USDC=3 RECIPIENT=0x… by default
+```
+
+## Without a guardian signer
+
+Omit `guardian`. `executeAll` stops at the first guardian step and returns `{ ok: false, awaitingGuardian: true, approval }`. Sign `approval.text` however you like, then:
+
+```ts
+await client.approvals.submit(plan, step, signature);
+await client.execute(plan, step);
+```
+
+## Repayment
+
+```ts
+const repay = await recipes.repayment(client, { kind: "repay", amountUsdc: 3, withdrawCollateral: true });
+await client.simulate(repay);
+await client.executeAll(repay);
+```
+
+The bridge back from Arc needs the guardian; repaying and withdrawing collateral do not.

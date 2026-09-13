@@ -1,0 +1,82 @@
+---
+title: Client
+description: createMandate, createMandateFromEnv and the MandateClient surface.
+---
+
+```bash
+npm i @yashjain99/mandate-sdk viem
+```
+
+The package is ESM, targets Node 22 and modern bundlers, and has `viem ^2.30` as its only required peer. Everything below is exported from `@yashjain99/mandate-sdk`.
+
+## `createMandate(config)`
+
+Returns a `MandateClient`. Framework-agnostic; `@yashjain99/mandate-ai` wraps it for the Vercel AI SDK and MCP.
+
+<AutoTypeTable path="../../packages/core/src/client.ts" name="MandateConfig" />
+
+`chains` defaults to Base Sepolia and Arc testnet. Each entry is `{ chain: Chain, rpc?: string }`; the `rpc` applies to reads and, with `LocalAgentWallet`, to sends and receipt polling too.
+
+## `createMandateFromEnv(overrides?)`
+
+Node only. Builds the client from environment variables, with any `MandateConfig` field overridable. Resolution order:
+
+| Field | Source |
+|---|---|
+| `account` | `MANDATE_ACCOUNT`, then `ACCOUNT`, then `contracts/deployments/base-sepolia.json` (or `MANDATE_DEPLOYMENTS_DIR`) |
+| RPCs | `MANDATE_RPC_<chainId>`, then `BASE_SEPOLIA_RPC` and `ARC_TESTNET_RPC` |
+| `wallet` | `CIRCLE_API_KEY` + `CIRCLE_ENTITY_SECRET` + `CIRCLE_WALLET_SET_ID` (all three) → `CircleAgentWallet`; else `AGENT_PRIVATE_KEY` → `LocalAgentWallet`; else `ReadOnlyAgentWallet` |
+| `store` | `MANDATE_STORE_DIR` → `fileStore`; else `memoryStore()` |
+| `guardian` | `MANDATE_GUARDIAN_KEY` → `localGuardian` (development only) |
+| `graphApiKey` | `GRAPH_API_KEY` |
+
+In read-only mode positions, markets, planning, simulation and approval text all work; `execute` returns a clear error.
+
+## `MandateClient`
+
+| Member | Returns | Notes |
+|---|---|---|
+| `account`, `wallet`, `store`, `guardianSigner?`, `graphApiKey?` | | public readonly fields |
+| `chain(chainId)` | `Chain` | throws if not configured |
+| `pub(chainId)` | `PublicClient` | cached per chain |
+| `chainIds()` | `number[]` | |
+| `explorer(chainId, hash)` | `string` | explorer URL for a transaction |
+| `owner()` | `Address` | cached |
+| `guardian(chainId?)` | `Address` | live on-chain read; the first call checks every chain agrees and throws otherwise |
+| `agentAddress()` | `Address` | |
+| `positions()` | object | balances on both chains, Compound position (debt, collateral, health factor, liquidation price, APR), mandate caps and remaining allowance, guardian and agent |
+| `repayments()` | `{ repayments[], currentDebtUsdc, healthFactor }` | intents recorded on the Arc account with `daysLeft` and `overdue` |
+| `markets(amountUsdc)` | `{ snapshot, ranked }` | The Graph, Morpho and the on-chain Compound twin; see [Markets](/docs/reference/sdk/markets) |
+| `plan(requests, opts)` | `Plan` | build from `ActionRequest[]`; `opts: { id?, intent, venueId?, venueExplanation? }` |
+| `simulate(plan)` | `{ results, verified, deferred, failed }` | progressive; see [Plans and steps](/docs/concepts/plans-and-steps#simulation) |
+| `execute(plan, index)` | `StepResult` | idempotent, re-simulates, handles approvals |
+| `executeAll(plan, onStep?)` | `StepResult[]` | stops at the first failure or guardian pause |
+| `approvals.request(plan, step)` | `PendingApproval` | builds and caches the text for the live nonce |
+| `approvals.submit(plan, step, signature, via?)` | `StoredApproval` | verifies against the on-chain guardian, stores |
+| `approvals.signWith(signer, plan, step, onStatus?)` | `StoredApproval` | request, sign with a `GuardianSigner`, submit |
+| `findStepTxHash(plan, step, lookbackBlocks?)` | `Hex \| undefined` | recovers a hash from `StepExecuted` logs |
+
+### `StepResult`
+
+```ts
+type StepResult =
+  | { ok: true; step: number; title: string; txHash?: Hex; explorer?: string; summary: string; alreadyDone?: boolean; note?: string; [k: string]: unknown }
+  | { ok: false; step: number; error: string; awaitingGuardian?: boolean; approval?: PendingApproval };
+```
+
+`alreadyDone` means the chain reported the step executed in an earlier attempt and nothing was re-sent. `awaitingGuardian` means stop and collect a signature; `approval.text` is what to sign.
+
+## Helpers
+
+- `isDone(step)`: `done` or `skipped`.
+- `jsonSafe(value)`: deep-copies with bigints as decimal strings; plans are stored this way.
+
+## Subpath exports
+
+| Import | Contents | Environment |
+|---|---|---|
+| `@yashjain99/mandate-sdk` | everything below | Node, bundlers |
+| `@yashjain99/mandate-sdk/ledger-web` | `ledgerWebGuardian` | browser (WebHID) |
+| `@yashjain99/mandate-sdk/store-redis` | `redisStore`, `RedisLike` | Node |
+| `@yashjain99/mandate-sdk/abi` | contract and protocol ABIs | anywhere |
+| `@yashjain99/mandate-sdk/chains` | `chains`, `arcTestnet`, `explorerTx` | anywhere |

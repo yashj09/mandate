@@ -3,22 +3,27 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cx } from "@/lib/sketch";
 
+const DOCS_URL = process.env.NEXT_PUBLIC_DOCS_URL ?? "https://mandate-docs.vercel.app";
+
 const LINKS = [
   { href: "/chat", label: "Chat" },
   { href: "/mandate", label: "Mandate" },
   { href: "/activity", label: "Activity" },
+  { href: DOCS_URL, label: "Docs", external: true },
 ];
 
 export function Nav() {
   const pathname = usePathname();
   return (
     <nav aria-label="Primary" className="flex gap-5 md:gap-7">
-      {LINKS.map(({ href, label }) => {
-        const active = pathname === href || pathname.startsWith(href + "/");
+      {LINKS.map(({ href, label, external }) => {
+        const active = !external && (pathname === href || pathname.startsWith(href + "/"));
         return (
           <Link
             key={href}
             href={href}
+            target={external ? "_blank" : undefined}
+            rel={external ? "noopener noreferrer" : undefined}
             aria-current={active ? "page" : undefined}
             className={cx(
               "font-body text-lg px-1 decoration-2 underline-offset-6 transition-colors",

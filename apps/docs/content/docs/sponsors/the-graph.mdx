@@ -1,0 +1,28 @@
+---
+title: The Graph
+description: One Messari standardized-lending query across six subgraphs decides where the agent borrows.
+---
+
+## Why a standardized schema matters here
+
+The agent needs to compare borrow rates across protocols before it commits collateral. Each protocol's own subgraph has its own shape. The Messari standardized lending schema gives every protocol the same `markets`, `rates` and `_meta` fields, so one GraphQL document (`USDC_MARKETS_QUERY`) runs unchanged against Aave v3 on three networks, Compound v3 on two, and Spark.
+
+## Where to look
+
+| Piece | Path |
+|---|---|
+| Subgraph ids and the query | `packages/core/src/markets/graph.ts` |
+| Health probe and fallback | `checkSubgraphHealth` reads `_meta.hasIndexingErrors`; unhealthy Messari deployments fall back to the Aave-official subgraphs |
+| Ranking | `packages/core/src/markets/venues.ts`: `fetchMarkets`, `rankVenues`, `IMPLEMENTED_EXECUTOR_CHAINS` |
+| Agent tool | `get_markets` in `@yashjain99/mandate-ai`; the console's landing table and `/api/markets` |
+| Probe script | `cd packages/core && AMOUNT=100 pnpm exec tsx scripts/probe-markets.ts` |
+
+The full subgraph table is in [Markets](/docs/reference/sdk/markets).
+
+## Mainnet informs, testnet executes
+
+There are no testnet subgraphs, so the table shows mainnet rates side by side with the venue's executable testnet twin. Compound v3 on Base has no Messari deployment; its rate is read from the Comet contract on Base Sepolia and merged in. `rankVenues` only recommends a venue whose twin has an implemented executor, so the agent never proposes a plan it cannot run.
+
+## What the user sees
+
+"Cheapest observed: Compound v3 Arbitrum 2.93%. Executable today: Compound v3 Base Sepolia 1.53%." The explanation string from `rankVenues` is what the agent repeats, and the venue table on the landing page is the same data.

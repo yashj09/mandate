@@ -1,0 +1,31 @@
+---
+title: Guardians and wallets
+description: Who signs approvals, who sends transactions, and the shipped implementations.
+---
+
+## `GuardianSigner`
+
+<AutoTypeTable path="../../packages/core/src/guardian/types.ts" name="GuardianSigner" />
+
+| Function | Import | Environment |
+|---|---|---|
+| `localGuardian(privateKey)` | `@yashjain99/mandate-sdk` | tests and development only |
+| `ledgerNodeGuardian({ derivationPath? })` | `@yashjain99/mandate-sdk` | Node, USB via `node-hid` |
+| `ledgerWebGuardian({ derivationPath? })` | `@yashjain99/mandate-sdk/ledger-web` | browser, WebHID |
+| `dmkGuardian(opts)` | `@yashjain99/mandate-sdk` | shared Device Management Kit glue; bring your own transport |
+
+Default derivation path `44'/60'/0'/0/0`. The Ledger kits are optional peers: `@ledgerhq/device-management-kit`, `@ledgerhq/device-signer-kit-ethereum`, `@ledgerhq/device-transport-kit-node-hid` or `-web-hid`, `rxjs`.
+
+Any wallet that can `personal_sign` a string is a valid guardian; wrap it in this interface.
+
+## `AgentWallet`
+
+<AutoTypeTable path="../../packages/core/src/wallet/types.ts" name="AgentWallet" />
+
+| Class | Constructor | Notes |
+|---|---|---|
+| `LocalAgentWallet` | `(privateKey, chains: Record<number, Chain \| { chain, rpc? }>)` | viem account; configured RPCs apply to sends |
+| `CircleAgentWallet` | `({ apiKey, entitySecret, walletSetId })` | Circle developer-controlled wallets; `@circle-fin/developer-controlled-wallets` optional dependency |
+| `ReadOnlyAgentWallet` | `(resolveAddress: () => Promise<Address>)` | reads only; `send` throws a clear read-only error |
+
+The agent wallet only ever calls the `MandateAccount` or permissionless CCTP mints. What bounds it is the mandate on-chain, not the wallet.

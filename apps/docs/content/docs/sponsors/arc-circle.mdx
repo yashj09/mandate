@@ -1,0 +1,26 @@
+---
+title: Arc and Circle
+description: USDC settlement on Arc, CCTP v2 between chains, and the developer-controlled wallet adapter.
+---
+
+## What Mandate does on Arc
+
+Arc is where the money lands and where the follow-through lives. The account on Arc has the same address as on Base Sepolia, so it is its own CCTP mint recipient. Payments to recipients are native USDC transfers, guarded by the Ledger. Repayment intents are recorded on the Arc account and read by the daily cron.
+
+## Where to look
+
+| Piece | Path |
+|---|---|
+| Contracts deployed on Arc testnet | `contracts/deployments/arc-testnet.json`; account `0x58612CE0945666cf58CA7e24808625a3cF10C5c3` on [Arcscan](https://testnet.arcscan.app/address/0x58612CE0945666cf58CA7e24808625a3cF10C5c3) |
+| Native-USDC accounting | `MandateAccount._usdcBalance` (measures the native balance when `NATIVE_IS_USDC`), `recipes.repayment`, `usdcCreditedInReceipt` |
+| CCTP v2 | `packages/core/src/exec/cctp.ts`: `buildBurn`, `waitForAttestation` (Iris sandbox, Fast Transfer), `encodeReceiveMessage`, `isMessageReceived`, `findBurnEvent`; adapters `cctpBurn`, `cctpRelay` |
+| Circle developer-controlled wallets | `packages/core/src/wallet/circle.ts` (`CircleAgentWallet`), `scripts/circle-setup.ts` for entity secret registration and wallet-set creation |
+| Arc mainnet | [Arc mainnet checklist](/docs/guides/arc-mainnet) |
+
+## The USDC-as-gas lesson
+
+On Arc the ERC-20 at `0x3600…` is a view of the native balance. The first account version measured both and charged every outflow twice. Every balance read in the system now names a single source. Details in [Mandates and caps](/docs/concepts/mandates-and-caps#what-counts-as-usdc).
+
+## Live transactions
+
+Burn on Base → mint on Arc → guardian-signed payment on Arc, all Ledger-signed, are linked from [Live demo](/docs/introduction/live-demo#a-full-run-step-by-step). The repayment leg burns on Arc and mints back on Base.

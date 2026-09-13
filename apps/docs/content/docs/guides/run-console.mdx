@@ -1,0 +1,57 @@
+---
+title: Run the console locally
+description: The Next.js chat and owner console against your own account.
+---
+
+## Prerequisites
+
+A deployed account ([Deploy an account](/docs/guides/deploy-account)), a filled `.env` at the workspace root, and a model: `ANTHROPIC_API_KEY`, or `AWS_REGION` plus AWS credentials plus `BEDROCK_MODEL_ID`. Set `TOOL_APPROVAL_SECRET` to any random string.
+
+## Start
+
+```bash
+pnpm dev            # builds the packages, then next dev on http://localhost:3000
+```
+
+The app reads `../../.env`. Plans and the audit trail go to `.data/` as JSON files unless Upstash variables are present, in which case it switches to Redis (see [Stores](/docs/guides/stores)).
+
+## What to do
+
+1. **Landing** at `/`: the hero and the live rate table from The Graph.
+2. **Mandate** at `/mandate`: account, caps, guardian and agent as read from both chains. Owner edits go through your browser wallet.
+3. **Chat** at `/chat`: *"I need 10 USDC on Arc by Friday to pay 0x000000000000000000000000000000000000dEaD. Don't sell my ETH."* Watch positions, the venue table, the plan card, the simulation card, and step 1 executing on its own.
+4. Step 2 opens the approval sheet with the text the device will show. Click **Approve on Ledger**, pick the device in the Chrome prompt, read the text on the device, approve. Steps 3 to 5 follow, with a second tap at the payment.
+5. **Activity** at `/activity`: plans and the audit trail with explorer links.
+
+Negative test: *"Bridge 5,000 USDC to Arc."* The contract reverts with `PerTxCapExceeded` and the agent explains.
+
+## Without a Ledger
+
+Generate a dev guardian key, make it the on-chain guardian on both chains with `setGuardian`, and set `NEXT_PUBLIC_DEV_GUARDIAN_KEY` to it. The approval sheet signs locally with a "dev signer" label. Never do this on an account that holds real value, and restore the Ledger afterwards.
+
+## Repayment
+
+*"Repay my loan."* The agent runs `check_repayments`, `draft_repayment_plan`, simulates and executes: bridge back from Arc (a tap), mint on Base, repay Compound, withdraw the freed WETH, close the intent. Reminders come from `GET /api/cron` with `Authorization: Bearer $CRON_SECRET`, or `pnpm --filter @yashjain99/mandate-ai cron`.
+
+## Headless helpers
+
+```bash
+cd packages/agent
+pnpm exec tsx scripts/run-tool.ts check_repayments
+pnpm exec tsx scripts/run-tool.ts draft_repayment_plan '{"intent":{"kind":"repay","amountUsdc":10,"withdrawCollateral":false}}'
+pnpm exec tsx scripts/run-step.ts <planId> <step>
+cd ../core && AMOUNT=100 pnpm exec tsx scripts/probe-markets.ts
+```
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `Contracts are not deployed yet` | `contracts/deployments/*.json` missing, or set `MANDATE_ACCOUNT` |
+| `MandateAccount address differs` | redeploy the second chain with identical roles and salt |
+| `GuardianRequired` on a step you expected to be autonomous | the policy says guardian; check the preset for that selector |
+| `BadGuardianSignature` | the on-chain guardian is not the device that signed, or the nonce moved; refresh the sheet |
+| CCTP attestation timeout | the burn must be mined; check the explorer and retry the step, it is idempotent |
+| Ledger not found in Chrome | use a Chromium browser, close Ledger Live, unlock and open the Ethereum app |
+| `auth error: missing authorization header` from The Graph | `GRAPH_API_KEY` missing |
+| Bedrock 400 on `tool_choice` | use a model id that supports tools |

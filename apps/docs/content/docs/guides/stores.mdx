@@ -1,0 +1,45 @@
+---
+title: Choose a store
+description: Memory, JSON files, Upstash Redis, or your own database behind one interface.
+---
+
+The SDK persists plans, pending and signed approvals, and the audit trail through the `Store` interface.
+
+| Store | Use when | Notes |
+|---|---|---|
+| `memoryStore()` | tests, one-shot scripts | default; nothing survives the process |
+| `fileStore(dir)` | one machine: local console, MCP in-repo | JSON files under `dir`; ids validated against `^[A-Za-z0-9_-]{1,80}$` |
+| `redisStore(redis)` | serverless hosts (Vercel) | import from `@yashjain99/mandate-sdk/store-redis`; `@upstash/redis` is an optional peer |
+| your own | Postgres, KV, anything | implement `Store`; about sixty lines |
+
+## Redis
+
+```ts
+import { Redis } from "@upstash/redis";
+import { createMandateFromEnv } from "@yashjain99/mandate-sdk";
+import { redisStore } from "@yashjain99/mandate-sdk/store-redis";
+
+const client = createMandateFromEnv({ store: redisStore(Redis.fromEnv(), "mandate") });
+```
+
+Keys: `mandate:plan:<id>`, `mandate:plans` (sorted set by creation time), `mandate:approval:pending:<planId>:<step>`, `mandate:approval:signed:<planId>:<step>`, `mandate:audit` (list). `RedisLike` names the seven methods used (`get`, `set`, `del`, `zadd`, `zrange`, `rpush`, `lrange`), so any compatible client works.
+
+## How the console picks
+
+`apps/web/lib/agent.ts`: if `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` (or the Vercel Marketplace's `KV_REST_API_URL` and `KV_REST_API_TOKEN`) are set, Redis; else `fileStore` at `MANDATE_STORE_DIR` or the workspace `.data`. The MCP server uses `MANDATE_STORE_DIR`, else the workspace `.data` when run in-repo, else `~/.mandate`. Keep the console and the MCP server on the same store if you want approvals signed in one to be visible in the other.
+
+## Implementing `Store`
+
+```ts
+import type { Store } from "@yashjain99/mandate-sdk";
+
+export function pgStore(sql: Sql): Store {
+  return {
+    plans: { get: async (id) => …, save: async (plan) => …, list: async () => … },
+    approvals: { getPending, putPending, get, put, delete: del },
+    audit: { write: async (entry) => ({ ...entry, ts: new Date().toISOString() }), read: async (planId?) => … },
+  };
+}
+```
+
+Contract: `plans.list()` returns newest first; `audit.write` stamps `ts` and returns the entry; approvals are keyed by `(planId, step)` and the SDK deletes stale ones itself. Types: [Stores reference](/docs/reference/sdk/stores).

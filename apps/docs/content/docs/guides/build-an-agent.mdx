@@ -1,0 +1,68 @@
+---
+title: Build an agent with the Vercel AI SDK
+description: Tools, the tool-approval policy, and how a UI collects the Ledger signature.
+---
+
+```bash
+npm i @yashjain99/mandate-ai @yashjain99/mandate-sdk ai zod viem
+```
+
+## Minimal server loop
+
+```ts
+import { streamText, stepCountIs } from "ai";
+import { createMandateFromEnv } from "@yashjain99/mandate-sdk";
+import { mandateTools, mandateToolApproval, MANDATE_SYSTEM_PROMPT } from "@yashjain99/mandate-ai";
+
+const client = createMandateFromEnv();
+
+export async function POST(req: Request) {
+  const { messages } = await req.json();
+  const result = streamText({
+    model,
+    system: MANDATE_SYSTEM_PROMPT,
+    messages,
+    tools: mandateTools(client),
+    toolApproval: mandateToolApproval(client),        // guardian steps pause for a human
+    experimental_toolApprovalSecret: process.env.TOOL_APPROVAL_SECRET,
+    stopWhen: stepCountIs(8),
+  });
+  return result.toUIMessageStreamResponse();
+}
+```
+
+`mandateTools(client)` returns nine tools: `get_positions`, `get_markets`, `draft_plan`, `simulate_plan`, `execute_step`, `check_repayments`, `draft_repayment_plan`, `get_plan`, `get_audit`. `mandateToolApproval(client)` returns `"user-approval"` for an `execute_step` call whose step requires the guardian and is not yet done, so the model pauses and your UI gets an approval request. See [AI tools reference](/docs/reference/ai-tools).
+
+## Collecting the signature in your UI
+
+When the stream pauses with a tool approval request for `execute_step`:
+
+1. `GET /api/approval?planId=…&step=…` on your server calls `client.approvals.request(plan, step)` and returns `{ text, guardian, chainId, deadline, nonce }`. Build it server-side, cache it per plan, step and nonce, and never accept text from the browser.
+2. Show the text. Have the Ledger sign it: `ledgerWebGuardian().signMessage(text)` from `@yashjain99/mandate-sdk/ledger-web`.
+3. `POST /api/approval` with `{ planId, step, signature }`; the server calls `client.approvals.submit(plan, step, signature)`, which verifies the signer against the on-chain guardian and stores it.
+4. Approve the tool call in the chat stream. `execute_step` now finds the stored approval and runs `executeWithGuardian`.
+
+The console in `apps/web` is the reference implementation: `app/api/chat/route.ts`, `app/api/approval/route.ts` and `components/ApprovalSheet.tsx`.
+
+## Without a UI (auto-sign for tests)
+
+```ts
+import { localGuardian } from "@yashjain99/mandate-sdk";
+const client = createMandateFromEnv({ guardian: localGuardian(process.env.DEV_GUARDIAN_KEY as `0x${string}`) });
+```
+
+With a `GuardianSigner` configured, `execute` signs guardian steps inline and no pause happens. Use this only for tests; the working example is `examples/vercel-ai-agent`:
+
+```bash
+pnpm --filter example-vercel-ai-agent start "Show my positions and the cheapest USDC borrow rate for 3 USDC."
+```
+
+## Any other framework
+
+The tools are plain `ai` `ToolSet` objects with zod input schemas, so they work with `generateText`, `ToolLoopAgent`, or can be unwrapped: `tools.get_positions.execute({}, ctx)`. For MCP-based frameworks use `registerMandateMcpTools(server, client)` on any `McpServer`. For no framework at all, use the SDK directly: [Node script](/docs/guides/node-script).
+
+## Production notes
+
+- Keep `stopWhen` small on serverless hosts. `execute_step` can wait up to four minutes on a CCTP attestation; eight steps fits a 300-second function window.
+- Add a kill switch: wrap `execute_step` so an env flag returns `{ ok: false, error: "disabled by the operator" }`. The console does this in `apps/web/lib/agent.ts`.
+- Rate limit the chat route. The agent key is funded; the mandate bounds on-chain spend but not model spend. See [Operate the console](/docs/guides/operate).

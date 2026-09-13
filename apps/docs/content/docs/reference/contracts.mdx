@@ -1,0 +1,95 @@
+---
+title: Contracts
+description: MandateAccount and MandateFactory, Solidity 0.8.28 with OpenZeppelin 5.
+---
+
+Source: `contracts/src/MandateAccount.sol`, `contracts/src/MandateFactory.sol`. Tests: 28 unit tests plus a Base Sepolia fork test (`forge test`). Deployed addresses are in [Live demo and addresses](/docs/introduction/live-demo).
+
+## MandateAccount
+
+### Roles and storage
+
+| Item | Type | Meaning |
+|---|---|---|
+| `owner`, `guardian`, `agent` | `address` | the three roles |
+| `USDC` | `address immutable` | ERC-20 USDC on this chain (the ERC-20 view on Arc) |
+| `NATIVE_IS_USDC` | `bool immutable` | measure the native balance instead (Arc) |
+| `mandate` | `Mandate{perTxCap, dailyCap, expiry}` | caps in 6-decimal USDC; `expiry == 0` means inactive |
+| `policies[target][selector]` | `Policy{set, allowed, requiresGuardian}` | the allow-list; `address(0)` is the wildcard target |
+| `windowStart`, `dailySpent` | `uint64`, `uint128` | the rolling 24-hour window |
+| `guardianNonce` | `uint256` | consumed by every guardian approval |
+| `executed[planId][step]` | `bool` | replay guard |
+| `repayments[]` | `Repayment{dueAt, amount, venue, done}` | repayment intents |
+
+Both `USDC` and `NATIVE_IS_USDC` are read from the factory in the constructor, so the init code is chain-independent.
+
+### Agent entry points
+
+| Function | Access | Behaviour |
+|---|---|---|
+| `execute(Call[] calls, bytes32 planId, uint8 step)` | agent | requires an active mandate; marks the step executed; every call must be `allowed && !requiresGuardian`; runs calls measuring gross USDC outflow; enforces `perTxCap` and the rolling `dailyCap`; emits `StepExecuted(planId, step, spent, callsHash, false)` |
+| `executeWithGuardian(calls, uint256 maxUsdcOut, planId, step, uint64 deadline, bytes signature)` | agent | requires an active mandate; marks the step executed; every call must be `allowed`; rebuilds the approval text for the current `guardianNonce`, recovers the signer, checks the deadline, increments the nonce; runs calls; reverts if measured outflow exceeds `maxUsdcOut`; emits `StepExecuted(…, true)` and `GuardianApproved` |
+| `approvalText(planId, step, maxUsdcOut, callsHash, deadline, nonce)` | view | the exact nine-line text the guardian signs |
+
+`Call` is `{ address target; uint256 value; bytes data }`. `callsHash = keccak256(abi.encode(calls))`.
+
+### Repayment intents
+
+| Function | Access |
+|---|---|
+| `scheduleRepayment(uint64 dueAt, uint128 amount, address venue) → id` | owner or agent; `dueAt` must be in the future, `amount` non-zero |
+| `markRepaid(uint256 id)` | owner or agent |
+| `repaymentCount()`, `repayments(i)` | view |
+
+### Owner administration
+
+| Function | Notes |
+|---|---|
+| `setMandate(uint128 perTxCap, uint128 dailyCap, uint64 expiry)` | |
+| `revokeMandate()` | zeroes the struct; every agent path then reverts `MandateInactive` |
+| `setPolicy(target, selector, allowed, requiresGuardian)` | one entry, `set = true` |
+| `setPolicies(PolicyInput[])` | batch |
+| `clearPolicy(target, selector)` | remove the explicit entry, fall back to the wildcard |
+| `setAgent(address)`, `setGuardian(address)`, `transferOwnership(address)` | zero address rejected for agent and owner |
+| `withdrawToken(token, to, amount)`, `withdrawNative(to, amount)` | escape hatches; ignore the mandate |
+| `ownerExecute(Call[])` | the owner may do anything; also used by the SDK for batched dry runs |
+
+### Views
+
+`dailyRemaining()` (accounts for window rollover), `policyFor(target, selector)` (after fallback), plus public getters for every storage item. `receive()` accepts plain transfers.
+
+### Events
+
+`StepExecuted(bytes32 indexed planId, uint8 indexed step, uint256 usdcOut, bytes32 callsHash, bool guarded)`, `GuardianApproved(planId, step, guardian, nonce)`, `MandateUpdated`, `PolicyUpdated`, `PolicyCleared`, `AgentUpdated`, `GuardianUpdated`, `OwnerUpdated`, `RepaymentScheduled`, `RepaymentDone`.
+
+### Errors
+
+| Error | When |
+|---|---|
+| `NotOwner()`, `NotAgent()`, `NotOwnerOrAgent()` | access control |
+| `MandateInactive()`, `MandateExpired()` | no mandate, or past expiry |
+| `CallNotAllowed(address target, bytes4 selector)` | not allow-listed, even with a guardian signature |
+| `GuardianRequired(address target, bytes4 selector)` | policy demands the guardian but `execute` was used |
+| `PerTxCapExceeded(uint256 spent, uint256 cap)` | measured outflow above the per-transaction cap |
+| `DailyCapExceeded(uint256 spent, uint256 cap)` | window budget exhausted |
+| `MaxOutExceeded(uint256 spent, uint256 maxOut)` | guardian step moved more than approved |
+| `ApprovalExpired()` | past the signed deadline |
+| `BadGuardianSignature()` | signer is not the guardian, or the text differs |
+| `CallFailed(uint256 index, bytes returndata)` | an inner call reverted |
+| `StepAlreadyExecuted(bytes32 planId, uint8 step)` | replay |
+| `ZeroAddress()`, `NoGuardian()`, `InvalidRepayment()` | validation |
+
+## MandateFactory
+
+| Function | Access | Notes |
+|---|---|---|
+| `constructor(address admin_)` | | admin is passed explicitly because the factory is deployed through the CREATE2 deployer |
+| `configure(address usdc, bool nativeIsUsdc)` | admin, once | kept out of the constructor so the factory address matches across chains |
+| `createAccount(owner, guardian, agent, bytes32 salt) → account` | anyone | CREATE2; reverts `NotConfigured` before `configure` |
+| `computeAddress(owner, guardian, agent, salt)` | view | the address `createAccount` would return |
+
+Events `Configured`, `AccountCreated`; errors `NotDeployer`, `AlreadyConfigured`, `NotConfigured`.
+
+## Deploy scripts
+
+`script/Deploy.s.sol` reads `DEPLOYER_PRIVATE_KEY`, `OWNER_ADDRESS`, `GUARDIAN_ADDRESS`, `AGENT_ADDRESS`, `ACCOUNT_SALT` and (mainnet) `ARC_USDC`; writes `deployments/<chain>.json`. `script/SetPolicy.s.sol` reads `OWNER_PRIVATE_KEY`, `ACCOUNT`, `PER_TX_CAP`, `DAILY_CAP`, `EXPIRY_DAYS` and applies the chain's preset.

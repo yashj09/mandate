@@ -1,0 +1,65 @@
+---
+title: Deploy the console
+description: Vercel plus Upstash Redis in ten minutes, or any VM with the file store.
+---
+
+The console is a Next.js 16 app in `apps/web`. On Vercel it is stateless, so plans, approvals and the audit trail live in Upstash Redis. The agent key lives in Vercel's environment; the rate limiter and the on-chain mandate bound what a stranger can make it do.
+
+## What a public deployment can and cannot do
+
+- Anyone can chat with the agent and make it execute steps **inside the mandate**: 100 USDC per transaction, 500 USDC per day on the demo account, only allow-listed protocol calls. Bridging and payments still require **your Ledger**; a visitor cannot get past the approval sheet without the device.
+- The rate limiter caps model spend. Cross-origin POSTs are rejected. Details in [Operate](/docs/guides/operate).
+- Kill switch: `MANDATE_EXECUTION_ENABLED=false` makes every `execute_step` return "disabled by the operator" without a redeploy.
+- Hard stop: lower the caps or **Revoke** from the Mandate page, or `cast send $ACCOUNT "revokeMandate()"`.
+
+## 1. Upstash Redis
+
+[console.upstash.com](https://console.upstash.com) → Create Database → Regional, **N. Virginia (us-east-1)** to sit next to Vercel's `iad1`, TLS on. Copy `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`. (Adding Upstash through the Vercel Marketplace injects `KV_REST_API_URL` and `KV_REST_API_TOKEN` instead; both pairs work.)
+
+## 2. Vercel project
+
+1. Push the repo to GitHub. Vercel does not need the Foundry submodule.
+2. [vercel.com/new](https://vercel.com/new) → import the repo.
+3. **Root Directory** `apps/web`, and tick **Include source files outside of the Root Directory**.
+4. Framework Next.js, Node 22. Install and build commands default: Vercel detects the pnpm workspace, installs at the repo root, and the root `prepare` script builds the SDK packages before `next build`.
+
+## 3. Environment variables
+
+| Variable | Value |
+|---|---|
+| `MANDATE_ACCOUNT` | your account address |
+| `AGENT_PRIVATE_KEY` | the agent key (testnet only; it holds gas only) |
+| `GRAPH_API_KEY` | Subgraph Studio key |
+| `TOOL_APPROVAL_SECRET` | `openssl rand -hex 16` |
+| model | `ANTHROPIC_API_KEY`, **or** `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `BEDROCK_MODEL_ID` |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | from step 1 |
+| `CRON_SECRET` | random; Vercel sends it as `Authorization: Bearer` to `/api/cron` |
+| `BASE_SEPOLIA_RPC` | recommended: an Alchemy or QuickNode URL; the public RPC rate-limits under load |
+| `MANDATE_EXECUTION_ENABLED` | `true` |
+| `RL_*` | optional rate-limit overrides, see [Operate](/docs/guides/operate) |
+
+Never set in production: `NEXT_PUBLIC_DEV_GUARDIAN_KEY`, `GUARDIAN_PRIVATE_KEY`, `MANDATE_GUARDIAN_KEY`, `OWNER_PRIVATE_KEY`, `DEPLOYER_PRIVATE_KEY`. The console needs none of them; the guardian is your Ledger.
+
+## 4. Verify
+
+1. `/` loads the venue table live.
+2. `/api/status` returns `guardian` = your Ledger, `agent`, `mandate.active: true`.
+3. Chat: *"Show my positions and remaining mandate."*
+4. Rate limit: nine rapid `POST /api/chat` from one IP; the ninth is a 429 with `Retry-After`. A POST without an `Origin` header is a 403.
+5. One Ledger approval on the production URL in Chrome; WebHID works because the site is HTTPS.
+6. `curl -H "Authorization: Bearer $CRON_SECRET" https://…/api/cron` returns reminders JSON. `apps/web/vercel.json` schedules it daily at 09:00 UTC.
+7. Redeploy, then open `/activity`: plans persist (Redis), which they would not with the file store.
+
+## Docs site
+
+This site is a second Vercel project from the same repo: Root Directory `apps/docs`, include source files outside the root, Node 22, no environment variables. The root install runs `fumadocs-mdx` for the docs app and `next build` does the rest.
+
+## Alternative: any VM
+
+```bash
+git clone --recursive <repo> && cd mandate && pnpm install
+cp .env.example .env && $EDITOR .env             # MANDATE_STORE_DIR=/var/lib/mandate
+cd apps/web && pnpm build && PORT=3000 pnpm start # pm2, nginx with TLS in front; WebHID needs HTTPS
+```
+
+No function time limits; the file store persists on disk; run `/api/cron` from `crontab` with the bearer secret. You own updates, backups and TLS renewal.

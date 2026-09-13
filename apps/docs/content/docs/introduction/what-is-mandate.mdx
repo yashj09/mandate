@@ -1,0 +1,45 @@
+---
+title: What Mandate is
+description: The problem, the one-sentence answer, and the pieces that ship.
+---
+
+## The problem
+
+Agents can already pay. Give a model a wallet key and it will move funds. What it cannot do is prove to you that it will stay inside the rules you had in mind. Prompts are not enforcement. A key in a `.env` file grants everything or nothing.
+
+## The answer
+
+The user delegates *bounded* authority to an AI agent through a smart account they own. The agent plans and executes; the contract enforces; a hardware wallet co-signs anything irreversible.
+
+Concretely, a `MandateAccount` holds the funds and knows three addresses:
+
+- the **owner**, a person with a browser wallet, who sets every limit;
+- the **agent**, a hot wallet the model drives, which may only call `execute`;
+- the **guardian**, a Ledger, whose signature is required for steps flagged irreversible.
+
+Every call the agent makes is checked against an on-chain allow-list of `(target, selector)` pairs. Every step's USDC outflow is *measured* on-chain and checked against a per-transaction cap and a rolling 24-hour cap. Steps that bridge or pay a third party revert unless the guardian has clear-signed a plain-text approval that the contract rebuilds and verifies.
+
+## The flow it ships with
+
+Tell the agent *"I need 100 USDC on Arc by Friday to pay Acme. Don't sell my ETH."* It:
+
+1. reads your positions and remaining mandate;
+2. compares live USDC borrow rates across lending protocols with one standardized query on The Graph;
+3. drafts a typed plan: supply WETH and borrow real Circle USDC on Compound v3 (Base Sepolia), burn it through CCTP v2, mint on Arc, pay the recipient, schedule the repayment;
+4. simulates every step it can, executes the borrow on its own, and stops at the bridge until you tap the Ledger.
+
+The reverse leg, repayment, works the same way: bridge back, repay Compound, withdraw the freed collateral, mark the intent done.
+
+## Where the model stops
+
+Claude only produces an *intent*: amount, recipient, constraints, repayment horizon. Everything after that is deterministic TypeScript in the SDK. The model never writes calldata, never sees a private key, and cannot lift a limit. If it tries to exceed the mandate the contract reverts with a named error and the agent explains why.
+
+<Callout title="Testnet only, today">
+All contracts are on Base Sepolia and Arc testnet with real Circle testnet USDC. The Arc mainnet path is documented in [Arc mainnet checklist](/docs/guides/arc-mainnet).
+</Callout>
+
+## Next
+
+- [Quickstart](/docs/introduction/quickstart) to try it in five minutes.
+- [Bounded delegation](/docs/concepts/bounded-delegation) for the trust model.
+- [Add Mandate to your agent](/docs/guides/build-an-agent) if you already have one.

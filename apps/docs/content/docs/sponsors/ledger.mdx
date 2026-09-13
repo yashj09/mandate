@@ -1,0 +1,38 @@
+---
+title: Ledger
+description: The guardian is a Ledger. Clear-signed text approvals over WebHID and USB, and the feedback we recorded.
+---
+
+## Role
+
+Any step that moves value irreversibly (a CCTP burn, a payment to a third party) reverts unless the Ledger has signed a nine-line plain-text approval. The contract rebuilds the text and recovers the device address. The user reads chain, step and maximum USDC on the device before approving.
+
+## Where to look
+
+| Piece | Path |
+|---|---|
+| Browser signing | `apps/web/components/ApprovalSheet.tsx`, `apps/web/lib/ledger.ts`, `@yashjain99/mandate-sdk/ledger-web` (`ledgerWebGuardian`, Device Management Kit over WebHID) |
+| Node signing | `ledgerNodeGuardian` (`node-hid`), shared glue in `packages/core/src/guardian/dmk.ts` |
+| Contract verification | `MandateAccount.approvalText`, `_consumeGuardianApproval` |
+| Specification | [Approval message spec v1](/docs/reference/approval-spec) |
+| Setup guide | [Ledger as guardian](/docs/guides/ledger) |
+
+## Developer feedback
+
+The feedback log lives in `docs/LEDGER_FEEDBACK.md` and is kept from day one of the build. Its recorded entry:
+
+### EIP-191 text instead of EIP-712 or calldata
+
+Our contracts have no Crypto Assets List descriptors, so a contract call from the device would require **blind signing** (SW `0x6a80` when disabled). EIP-712 without registered filters also falls back to blind signing. The guardian therefore signs a fixed-format ASCII message which the contract rebuilds and verifies, and the device screen shows the plan step in words.
+
+Suggestion: a documented "clear-signed approval message" pattern for agent builders, plus a self-serve way to register EIP-712 filters for testnet contracts.
+
+## Observations from the build
+
+Practical points that shaped the setup guide and the approval sheet, drawn from the troubleshooting notes rather than the formal log:
+
+- **Ledger Live holds the USB device.** With it open, Chrome's WebHID prompt lists nothing. The guide tells users to close it first.
+- **The Ethereum app must be open** before the transport connects, and blind signing can stay off because approvals are plain text.
+- **Message length and order matter.** The approval text is kept ASCII and under about 300 bytes, with chain, step and maximum USDC near the top, so a Nano paginates it legibly.
+- **Check the address before signing.** The approval sheet compares the connected device's address with the on-chain `guardian()` for that chain and names both when they differ.
+- **One device, two chains.** Because the chain id is in the text, the same Ledger guards Base Sepolia and Arc with no per-chain configuration, and the SDK refuses to build approvals if the two chains disagree on the guardian.

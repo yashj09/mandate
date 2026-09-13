@@ -1,0 +1,5 @@
+{
+  "title": "Mandate",
+  "root": true,
+  "pages": ["index", "introduction", "concepts", "guides", "reference", "sponsors"]
+}

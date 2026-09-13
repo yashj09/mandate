@@ -1,0 +1,33 @@
+---
+title: Markets
+description: USDC borrow rates from The Graph's standardized subgraphs, Morpho, and the on-chain Compound twin.
+---
+
+## One query, six protocols
+
+`fetchMarkets({ graphApiKey, … })` runs a single Messari standardized-lending query (`USDC_MARKETS_QUERY`) against each subgraph in `MESSARI_LENDING_SUBGRAPHS` on The Graph's decentralized network, probes `_meta` for indexing health, falls back to the Aave-official subgraphs where a Messari deployment is unhealthy, and merges Morpho from its API.
+
+| Venue id | Protocol | Network | Subgraph id |
+|---|---|---|---|
+| `aave-v3-ethereum` | Aave v3 | Ethereum | `JCNWRypm7FYwV8fx5HhzZPSFaMxgkPuw4TnR3Gpi81zk` |
+| `aave-v3-base` | Aave v3 | Base | `D7mapexM5ZsQckLJai2FawTKXJ7CqYGKM8PErnS3cJi9` |
+| `aave-v3-arbitrum` | Aave v3 | Arbitrum | `4xyasjQeREe7PxnF6wVdobZvCw5mhoHZq3T7guRpuNPf` |
+| `compound-v3-ethereum` | Compound v3 | Ethereum | `AwoxEZbiWLvv6e3QdvdMZw4WDURdGbvPfHmZRc8Dpfz9` |
+| `compound-v3-arbitrum` | Compound v3 | Arbitrum | `5MjRndNWGhqvNX7chUYLQDnvEgc8DaH8eisEkcJt71SR` |
+| `spark-ethereum` | Spark | Ethereum | `GbKdmBe4ycCYCQLQSjqGg6UHYoYfbyJyq5WrG35pv1si` |
+
+Gateway: `https://gateway.thegraph.com/api/subgraphs/id/<id>` with `GRAPH_API_KEY`.
+
+## The executable twin
+
+There are no testnet subgraphs. Mainnet rates inform the decision; execution happens on the venue's **testnet twin**. Compound v3 on Base has no Messari deployment, so `compoundTwinRate(publicClient)` reads the live rate straight from the Comet contract on Base Sepolia and merges it in as `compound-v3-base-sepolia`, the primary executable venue.
+
+`IMPLEMENTED_EXECUTOR_CHAINS` (today `{ 84532 }`) gates what `rankVenues` may recommend. Aave v3 on Arbitrum Sepolia is observed but deliberately not tagged executable until an executor exists.
+
+## `rankVenues(snapshot, amountUsd)`
+
+Returns `{ table, cheapestMainnet, recommended, explanation }`. `table` is every venue with borrow APR, supply APR, utilization, available liquidity and `executableOn`. `recommended` is the cheapest venue with enough liquidity **and** an implemented executor; `explanation` is the sentence the agent repeats to the user.
+
+## Types
+
+`VenueRate`, `MarketsSnapshot` (with `fetchedAt` and `warnings`), `Ranked`, `Protocol`, `SubgraphHealth`. Lower-level: `querySubgraph`, `checkSubgraphHealth`, `fetchMessariUsdcRates`, `fetchAaveOfficialUsdcRates`, `fetchMorphoUsdcRates`.

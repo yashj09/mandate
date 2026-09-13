@@ -1,0 +1,60 @@
+---
+title: Actions and recipes
+description: ActionAdapter, the registry, the built-in adapters and the two recipes.
+---
+
+## `ActionAdapter<P>`
+
+<AutoTypeTable path="../../packages/core/src/actions/types.ts" name="ActionAdapter" />
+
+### `BuildResult`
+
+<AutoTypeTable path="../../packages/core/src/actions/types.ts" name="BuildResult" />
+
+### Contexts
+
+`ActionContext` gives `account`, `pub(chainId)`, `policyFor(chainId, target, selector)` (live on-chain lookup) and `now()`. `ExecutionContext` adds `plan`, `step` and, for CCTP relays, the fetched `attestation`.
+
+## Registry
+
+| Function | Purpose |
+|---|---|
+| `registerAction(adapter)` | add or replace the adapter for a kind |
+| `getAction(kind)` | look one up; built-ins register lazily on the first miss |
+| `listActions()` | all registered kinds |
+| `registerBuiltinActions()` | register the seven built-ins explicitly |
+
+## Built-in adapters
+
+| Export | Kind | Params |
+|---|---|---|
+| `compoundSupplyBorrow` | `supply_borrow` | `{ amountUsdc6, wethWei?, targetHealth?, borrowAprPct? }` |
+| `compoundRepay` | `repay` | `{ amountUsdc6, withdrawWethWei? }` |
+| `cctpBurn` | `bridge_burn` | `{ amountUsdc6, fromChainId, toChainId }` |
+| `cctpRelay` | `bridge_relay` | `{ fromChainId, toChainId }` (direct step; resolves the attestation at execution) |
+| `pay` | `pay` | `{ to, amountUsdc6, chainId?, mode?: "native" \| "erc20" }` |
+| `scheduleRepayment` | `schedule_repayment` | `{ amountUsdc6, dueAt, venue? }`; records the created id in `params.repaymentId` |
+| `markRepaid` | `mark_repaid` | `{ repaymentId }` |
+
+All bigint params accept strings too, because plans round-trip through JSON.
+
+## `ActionRequest`
+
+```ts
+interface ActionRequest<P = any> { kind: StepKind; params: P }
+```
+
+`client.plan(requests, { intent, venueId, venueExplanation })` builds a `Plan` from a list of them, in order.
+
+## Recipes
+
+```ts
+import { recipes } from "@yashjain99/mandate-sdk";
+```
+
+| Recipe | Steps |
+|---|---|
+| `recipes.liquidity(client, intent, opts?)` | `supply_borrow` → `bridge_burn` (Base→Arc) → `bridge_relay` → `pay` (if `recipient`) → `schedule_repayment` |
+| `recipes.repayment(client, repayIntent, opts?)` | `bridge_burn` (Arc→Base, only if USDC is on Arc) → `bridge_relay` → `repay` → `mark_repaid` (if `repaymentId`) |
+
+`opts` carries `venueId`, `venueExplanation`, `borrowAprPct` and an optional `id`. Recipes read balances from exactly one source per chain and derive `requiresGuardian` from the live policy.

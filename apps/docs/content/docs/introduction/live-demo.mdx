@@ -1,0 +1,64 @@
+---
+title: Live demo and addresses
+description: What is deployed, where to look, and what a full run looks like.
+---
+
+## Deployed contracts
+
+The factory is deployed through the canonical CREATE2 deployer and configured after deployment, so the factory and every account have the same address on both chains.
+
+| | Base Sepolia (84532) | Arc testnet (5042002) |
+|---|---|---|
+| `MandateFactory` | [`0xA34164910f77E6E2965E89166542e40B293E47F9`](https://sepolia.basescan.org/address/0xA34164910f77E6E2965E89166542e40B293E47F9) | [same](https://testnet.arcscan.app/address/0xA34164910f77E6E2965E89166542e40B293E47F9) |
+| `MandateAccount` (demo) | [`0x58612CE0945666cf58CA7e24808625a3cF10C5c3`](https://sepolia.basescan.org/address/0x58612CE0945666cf58CA7e24808625a3cF10C5c3) | [same](https://testnet.arcscan.app/address/0x58612CE0945666cf58CA7e24808625a3cF10C5c3) |
+| Owner | `0x33014845047C61CCF1672b7F6766C5Cc00999C09` | same |
+| Agent | `0xd52788d766acd8cB2730DCa871037e7F6cB49aD0` | same |
+| Guardian (Ledger) | `0x889305497D8cbb367b36D446E8e64a74606B7826` | same |
+| USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | `0x3600000000000000000000000000000000000000` (ERC-20 view of native USDC) |
+| Compound v3 cUSDCv3 | `0x571621Ce60Cebb0c1D442B5afb38B1663C6Bf017` | |
+| CCTP TokenMessengerV2 | `0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA` | same |
+| CCTP MessageTransmitterV2 | `0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275` | same |
+
+The demo mandate is 100 USDC per transaction, 500 USDC per 24 hours.
+
+## The console
+
+[creditline-web.vercel.app](https://creditline-web.vercel.app) has four pages:
+
+- **Landing**: the story in one screen and a live table of USDC borrow rates from The Graph.
+- **Chat**: the agent. Guardian steps open an approval sheet that shows the exact text and signs it over WebHID with a Ledger.
+- **Mandate**: caps, expiry, guardian and agent, editable by the owner with a browser wallet.
+- **Activity**: every plan, simulation, approval and transaction, with reasoning and explorer links.
+
+## A full run, step by step
+
+This is the Ledger-guarded liquidity flow as it ran on Sept 9 (plan `plan-mttcpx4e`, 10 USDC). Every transaction is on a public explorer.
+
+<Steps>
+<Step>
+### Supply and borrow, autonomous
+The agent wraps ETH, supplies WETH and borrows 10 USDC on Compound v3 in one `execute` call. Measured outflow: 0, because a borrow is an inflow. [Basescan](https://sepolia.basescan.org/tx/0x2afcbcda3a43ea09c20aaab5c33cce37eb3d08f6cd528c43f9a4a499226e930f). Health factor after: 1.78.
+</Step>
+<Step>
+### CCTP burn, Ledger tap
+The policy marks `depositForBurn` as guardian-required. The console shows the approval text; the Ledger displays it and signs. `executeWithGuardian` rebuilds the text, recovers the device address, consumes the nonce, runs the burn and checks that measured outflow stayed within `Max USDC out: 10.000000`. [Basescan](https://sepolia.basescan.org/tx/0x2192fcb110f657c8e5fcd26e57aca8594ffc56a944842442d2038b5bedce1054).
+</Step>
+<Step>
+### Mint on Arc, autonomous
+The agent wallet fetches the Iris attestation (about eight seconds with Fast Transfer) and calls `receiveMessage`. The account is its own mint recipient because it has the same address on Arc. [Arcscan](https://testnet.arcscan.app/tx/0x887e7003e7c069b10205b378708f2f486d88a87407906c16f74b0aa940372358).
+</Step>
+<Step>
+### Payment, second Ledger tap
+Native USDC leaves the account to the recipient. Guardian-required by the wildcard value-transfer policy. [Arcscan](https://testnet.arcscan.app/tx/0x452bebe3ba5151117bd0e7807706e77d664d122c50e3b7622de5745e0d200e95).
+</Step>
+<Step>
+### Schedule repayment, autonomous
+A repayment intent is recorded on the Arc account with a due date. The cron reminder reads it later. [Arcscan](https://testnet.arcscan.app/tx/0x0ac28e4603af4ab0166dffb251138a2910fff2b756fda5e5365f8357f82f8cc7).
+</Step>
+</Steps>
+
+Both `GuardianApproved` events recover to the Ledger address, measured `usdcOut` was exactly 10.000000 on each guarded step, and the guardian nonces advanced.
+
+## The negative test
+
+Ask the agent to bridge 5,000 USDC. The plan fails simulation with `PerTxCapExceeded(5000000000, 100000000)` and the agent explains that the mandate, not the model, said no.

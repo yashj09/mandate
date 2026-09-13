@@ -1,0 +1,80 @@
+---
+title: Claude Desktop and MCP
+description: Run the Mandate MCP server from npx or from the repo, and handle the guardian pause.
+---
+
+## From npm
+
+```bash
+npx -y @yashjain99/mandate-mcp                 # stdio
+npx -y @yashjain99/mandate-mcp --http 3111     # Streamable HTTP at http://localhost:3111/mcp
+```
+
+Environment: `MANDATE_ACCOUNT`; `AGENT_PRIVATE_KEY` (or the three `CIRCLE_*` variables) to execute, omit for read-only; optional `GRAPH_API_KEY`, `BASE_SEPOLIA_RPC`, `ARC_TESTNET_RPC`, `MANDATE_STORE_DIR`, `MANDATE_ENV_FILE`.
+
+Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "mandate": {
+      "command": "npx",
+      "args": ["-y", "@yashjain99/mandate-mcp"],
+      "env": {
+        "MANDATE_ACCOUNT": "0x…",
+        "AGENT_PRIVATE_KEY": "0x…",
+        "GRAPH_API_KEY": "…"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop. The server exposes eleven tools and ships its own instructions (the Mandate system prompt).
+
+## From the repo
+
+```json
+{ "mcpServers": { "mandate": { "command": "pnpm", "args": ["--filter", "@yashjain99/mandate-mcp", "start"], "cwd": "/path/to/mandate" } } }
+```
+
+In-repo the server finds `.env` by walking up from its working directory and shares the workspace `.data` store with the web console, so a plan drafted in Claude Desktop shows up on the console's Activity page and its approval sheet can sign it.
+
+## The guardian pause
+
+MCP is request and response, so the pause is explicit:
+
+<Steps>
+<Step>
+### `prepare_step(planId, step)`
+Agent-only steps execute right away. Guardian steps return `approval: { text, guardian, chainId, deadline, nonce }` and the model shows the text to you.
+</Step>
+<Step>
+### Sign the text
+On the console's approval sheet with your Ledger (open the plan on the Activity page), or with any wallet that can `personal_sign` the exact text. In development, `packages/core/scripts/dev-sign-approval.ts` signs with `GUARDIAN_PRIVATE_KEY` and posts to the running console.
+</Step>
+<Step>
+### `submit_guardian_signature(planId, step, signature)`
+The server verifies the signature against the cached text and the on-chain guardian. Only the signature is accepted from the client; text and guardian come from the server.
+</Step>
+<Step>
+### `execute_step(planId, step)`
+Runs `executeWithGuardian`. Safe to retry: the chain is checked before anything is re-sent.
+</Step>
+</Steps>
+
+## Pair with the skill
+
+```bash
+npx skills add yashj09/mandate -s mandate-agent
+```
+
+The `mandate-agent` skill tells the model the loop, the rules (never invent hashes, treat `PerTxCapExceeded` as intended behaviour, stop on `awaitingGuardian`) and the tool reference.
+
+## Smoke test without a model
+
+```bash
+cd apps/mcp && node scripts/smoke.mjs
+```
+
+Lists the tools over stdio. The handshake always succeeds; misconfiguration shows up as a tool error, not a crash.

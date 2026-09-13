@@ -1,0 +1,82 @@
+---
+title: Add a protocol
+description: Write an ActionAdapter, ship a policy preset, register both.
+---
+
+An **ActionAdapter** turns typed parameters into the calls one step makes, and tells the planner whether the step is reversible and whether the on-chain policy should decide the guardian requirement.
+
+## The adapter
+
+```ts
+import { registerAction, type ActionAdapter } from "@yashjain99/mandate-sdk";
+import { encodeFunctionData, erc20Abi, type Address } from "viem";
+
+const USDC: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+const VAULT: Address = "0xYourVault";
+
+export interface DepositParams { amountUsdc6: bigint | string }
+
+export const vaultDeposit: ActionAdapter<DepositParams> = {
+  kind: "vault_deposit" as any,          // extend StepKind in your fork, or reuse an existing kind's semantics
+  chainId: () => 84532,
+  reversible: true,                      // the owner can withdraw from the vault later
+  guardianRule: "policy",                // let the account's allow-list decide
+  async build(p) {
+    const amount = BigInt(p.amountUsdc6); // params round-trip through JSON as strings
+    return {
+      title: `Deposit ${Number(amount) / 1e6} USDC into the vault`,
+      description: "Approve then deposit; funds stay withdrawable by the owner.",
+      maxUsdcOut: amount,                // binding for guardian steps; informative otherwise
+      calls: [
+        { target: USDC, value: 0n, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [VAULT, amount] }) },
+        { target: VAULT, value: 0n, data: encodeFunctionData({ abi: vaultAbi, functionName: "deposit", args: [amount] }) },
+      ],
+    };
+  },
+};
+
+registerAction(vaultDeposit);
+```
+
+Then plan with it: `client.plan([{ kind: "vault_deposit", params: { amountUsdc6: 5_000000n } }], { intent })`.
+
+## The contract of an adapter
+
+| Member | Purpose |
+|---|---|
+| `kind` | the step kind; one adapter per kind in the registry |
+| `chainId(params, ctx)` | which configured chain the step runs on |
+| `reversible` | shown to the human; irreversible steps are explained before approval |
+| `guardianRule` | `"policy"` (recommended), `"always"`, or `"never"` |
+| `build(params, ctx)` | title, description, `calls`, `maxUsdcOut`, optional `direct`, optional `projection` |
+| `isExecuted?(params, ctx)` | on-chain probe for direct steps; account steps use the per-step `executed` flag automatically |
+| `resolveDirect?(params, ctx)` | fill `direct.data` at execution time (CCTP needs the attestation) |
+| `afterExecute?(params, receipt, ctx)` | enrichment only; errors become notes on the step |
+
+Full types: [Actions reference](/docs/reference/sdk/actions).
+
+## Rules
+
+- Every `(target, selector)` you emit must be allow-listed on-chain, or `build` is rejected before anything is sent. Ship a preset:
+
+```ts
+export const vaultPolicy = [
+  { target: USDC,  selector: "0x095ea7b3", allowed: true, requiresGuardian: false },  // approve
+  { target: VAULT, selector: "0xb6b55f25", allowed: true, requiresGuardian: false },  // deposit
+];
+// owner applies it: ownerEncoders.setPolicies(vaultPolicy)
+```
+
+- Value that leaves to a third party or crosses chains: `requiresGuardian: true` in the preset. Reversible protocol interactions: agent-only.
+- `maxUsdcOut` is what the human reads on the device for guardian steps and what the contract enforces on measured outflow. Set it to the true maximum, not a guess.
+- Params are persisted as JSON. Coerce bigints with `BigInt()` when reading them back in `isExecuted` or `resolveDirect`.
+- Idempotency: the executor consults the chain before every send. If your step is a direct transaction, implement `isExecuted` so a crash between send and persist never double-executes.
+- Do not throw fatally from `afterExecute`; it runs after the step is already recorded as done.
+
+## Direct steps
+
+A direct step is a transaction the agent wallet sends itself, not through the account. Use it only for permissionless calls that do not touch the account's authority, like CCTP `receiveMessage`. Return `direct: { to, data: "0x" }` from `build` and fill the data in `resolveDirect`; return `calls: []`.
+
+## Testing
+
+`packages/core` uses vitest. Unit-test `build` for the calldata you expect, then run a fork test in Foundry or a testnet dry run with `client.simulate(plan)`, which will tell you exactly which `(target, selector)` is missing from the policy.

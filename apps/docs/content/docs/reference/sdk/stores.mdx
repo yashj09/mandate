@@ -1,0 +1,34 @@
+---
+title: Stores
+description: The Store interface and the three implementations.
+---
+
+## `Store`
+
+<AutoTypeTable path="../../packages/core/src/store/types.ts" name="Store" />
+
+## Approval records
+
+<AutoTypeTable path="../../packages/core/src/store/types.ts" name="PendingApproval" />
+
+`StoredApproval` extends it with `signature` and `signedAt`.
+
+## Audit entries
+
+```ts
+interface AuditEntry { ts: string; planId: string; step: number; kind: string; summary: string; data?: Record<string, unknown> }
+```
+
+`kind` values used by the SDK include `plan`, `simulation`, `guardian-request`, `guardian-signed`, `tx`, `error` and `info`.
+
+## Implementations
+
+| Function | Import | Notes |
+|---|---|---|
+| `memoryStore()` | `@yashjain99/mandate-sdk` | default |
+| `fileStore(dir)` | `@yashjain99/mandate-sdk` | `plans/<id>.json`, `approvals/…`, `audit.jsonl`; ids must match `^[A-Za-z0-9_-]{1,80}$` |
+| `redisStore(redis, prefix = "mandate")` | `@yashjain99/mandate-sdk/store-redis` | any `RedisLike` client, designed for `@upstash/redis` |
+
+<AutoTypeTable path="../../packages/core/src/store/redis.ts" name="RedisLike" />
+
+See [Choose a store](/docs/guides/stores) for when to use which.

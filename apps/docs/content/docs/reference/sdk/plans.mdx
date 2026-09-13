@@ -1,0 +1,32 @@
+---
+title: Plans, steps and intents
+description: The zod schemas the model fills and the SDK persists.
+---
+
+All schemas are exported both as zod objects and inferred types: `IntentSchema`/`Intent`, `RepayIntentSchema`/`RepayIntent`, `StepSchema`/`Step`, `PlanSchema`/`Plan`, `StepKind`, `CallSchema`.
+
+## Intent
+
+What the model extracts from the user's message. Everything after it is deterministic.
+
+<AutoTypeTable path="../../packages/core/src/plan/schema.ts" name="Intent" />
+
+## RepayIntent
+
+<AutoTypeTable path="../../packages/core/src/plan/schema.ts" name="RepayIntent" />
+
+## Step
+
+<AutoTypeTable path="../../packages/core/src/plan/schema.ts" name="Step" />
+
+Statuses: `pending`, `simulated`, `awaiting_guardian`, `executing`, `done`, `failed`, `skipped`.
+
+## Plan
+
+<AutoTypeTable path="../../packages/core/src/plan/schema.ts" name="Plan" />
+
+`projected` holds the health factor, liquidation price, borrow APR and WETH price computed at plan time. `collateralWeth` is the collateral the plan adds (or, for repay plans, withdraws), as an 18-decimal string.
+
+## Step kinds
+
+`supply_borrow`, `bridge_burn`, `bridge_relay`, `pay`, `schedule_repayment`, `repay`, `mark_repaid`. See the table in [Plans and steps](/docs/concepts/plans-and-steps#step-kinds).

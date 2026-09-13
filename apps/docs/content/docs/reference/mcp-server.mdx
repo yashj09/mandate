@@ -1,0 +1,44 @@
+---
+title: MCP server
+description: "@yashjain99/mandate-mcp: flags, environment, tools and store resolution."
+---
+
+```bash
+npx -y @yashjain99/mandate-mcp                # stdio
+npx -y @yashjain99/mandate-mcp --http 3111    # Streamable HTTP at /mcp
+```
+
+The published binary is `mandate-mcp`. In the repo: `pnpm --filter @yashjain99/mandate-mcp start` (or `start:http`).
+
+## Flags
+
+| Flag | Effect |
+|---|---|
+| none | stdio transport |
+| `--http [port]` | Express server with Streamable HTTP at `http://localhost:<port>/mcp`, default port 3111 |
+
+## Environment
+
+| Variable | Purpose |
+|---|---|
+| `MANDATE_ENV_FILE` | explicit `.env` path; otherwise the first of `.env`, `../.env`, `../../.env` from the working directory is loaded |
+| `MANDATE_STORE_DIR` | store directory; otherwise the workspace `.data` if present, else `~/.mandate` |
+| `MANDATE_ACCOUNT` | the account (or `ACCOUNT`, or `contracts/deployments/*.json` in-repo) |
+| `AGENT_PRIVATE_KEY` or `CIRCLE_API_KEY` + `CIRCLE_ENTITY_SECRET` + `CIRCLE_WALLET_SET_ID` | agent wallet; omit for read-only |
+| `BASE_SEPOLIA_RPC`, `ARC_TESTNET_RPC` | optional RPC overrides |
+| `GRAPH_API_KEY` | live rates from The Graph |
+| `MANDATE_GUARDIAN_KEY` | development-only auto-signing guardian; never with real funds |
+
+Everything else follows [`createMandateFromEnv`](/docs/reference/sdk/client#createmandatefromenvoverrides).
+
+## Tools
+
+Eleven: `get_positions`, `get_markets`, `draft_plan`, `simulate_plan`, `prepare_step`, `submit_guardian_signature`, `execute_step`, `check_repayments`, `draft_repayment_plan`, `get_plan`, `get_audit`. Inputs and outputs are in [AI tools](/docs/reference/ai-tools). Tool errors come back as `{ error }` results, never as protocol failures.
+
+The server advertises the Mandate system prompt as its `instructions`.
+
+## Behaviour
+
+- The client is created lazily on the first tool call, so the handshake always succeeds and misconfiguration is a tool error the model can relay.
+- The store is shared with the web console when both run in the repo, so a plan drafted over MCP appears on the console's Activity page and can be signed in its approval sheet.
+- Guardian flow: `prepare_step` → sign the text → `submit_guardian_signature` → `execute_step`. See [Claude Desktop and MCP](/docs/guides/mcp-claude-desktop).

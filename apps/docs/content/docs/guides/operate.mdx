@@ -1,0 +1,66 @@
+---
+title: Operate the console
+description: Rate limits, the kill switch, the hard stop, key rotation and funds.
+---
+
+## Rate limits
+
+Sliding windows keyed by client IP (`x-forwarded-for` first hop), enforced in `apps/web/proxy.ts` before any route runs. Upstash when Redis variables are present, an in-process fallback otherwise, and **fail-open** with a log line if Redis errors so a cache hiccup never takes the demo down.
+
+| Rule | Default | Env override | Applies to |
+|---|---|---|---|
+| `chat_burst` | 8 per 10 min per IP | `RL_CHAT_PER_10M` | `POST /api/chat` |
+| `chat_daily` | 40 per day per IP | `RL_CHAT_PER_DAY` | `POST /api/chat` |
+| `chat_global` | 400 per day, all IPs | `RL_CHAT_GLOBAL_PER_DAY` | `POST /api/chat` |
+| `approval_post` | 20 per 10 min per IP | `RL_APPROVAL_POST_PER_10M` | `POST /api/approval` |
+| `approval_get` | 60 per 10 min per IP | `RL_APPROVAL_GET_PER_10M` | `GET /api/approval` |
+| `read` | 120 per min per IP | `RL_READ_PER_MIN` | `GET /api/status`, `/api/plans`, `/api/markets` |
+
+Rejections return `429` with `{ error, retryAfterSeconds }` and a `Retry-After` header. `POST /api/chat` and `POST /api/approval` also require a same-origin `Origin` or `Referer`; otherwise `403`. `/api/cron` is protected by `CRON_SECRET` alone.
+
+The global daily budget is what bounds model spend if IPs rotate. On-chain spend is bounded by the mandate regardless of traffic.
+
+## Kill switch
+
+Set `MANDATE_EXECUTION_ENABLED=false` in the host's environment. Every `execute_step` returns `{ ok: false, error: "execution is disabled by the operator right now" }`. Reads, planning and simulation keep working. On Vercel the change applies on the next request; redeploy if in doubt.
+
+## Hard stop
+
+From the Mandate page with the owner wallet: lower the caps or **Revoke** on both chains. Or:
+
+```bash
+cast send $ACCOUNT "revokeMandate()" --private-key $OWNER_PRIVATE_KEY --rpc-url $BASE_SEPOLIA_RPC
+cast send $ACCOUNT "revokeMandate()" --private-key $OWNER_PRIVATE_KEY --rpc-url $ARC_TESTNET_RPC
+```
+
+Every agent path then reverts with `MandateInactive`.
+
+## Rotate the agent key
+
+```bash
+cast wallet new
+cast send $ACCOUNT "setAgent(address)" $NEW --private-key $OWNER_PRIVATE_KEY --rpc-url $BASE_SEPOLIA_RPC
+cast send $ACCOUNT "setAgent(address)" $NEW --private-key $OWNER_PRIVATE_KEY --rpc-url $ARC_TESTNET_RPC
+```
+
+Update `AGENT_PRIVATE_KEY` in the host, fund the new address with gas on both chains. The old key can no longer call `execute` (`NotAgent`).
+
+## Funds to watch
+
+`GET /api/status` reports them.
+
+| Who | Chain | Needs |
+|---|---|---|
+| Agent | Base Sepolia | ETH for gas |
+| Agent | Arc | USDC for gas |
+| Account | Base Sepolia | ETH as collateral (about 0.055 ETH per 100 USDC borrowed) |
+
+Top up with `cast send <address> --value …` from the deployer.
+
+## Logs
+
+Vercel → Project → Logs. Rate-limit rejections appear as 429s with the rule name; a Redis failure shows `[ratelimit] … failed open`. The audit trail on `/activity` records every plan, simulation, approval request, signature and transaction with reasoning.
+
+## Costs
+
+Vercel Hobby and Upstash free tier are enough. Model spend is at most `chat_global` requests per day. On-chain spend is at most the mandate.

@@ -1,0 +1,86 @@
+---
+title: Approval message spec v1
+description: The canonical clear-signed text that binds a guardian approval to one step.
+---
+
+Status: implemented by `MandateAccount.sol` and `@yashjain99/mandate-sdk`.
+
+## Purpose
+
+An AI agent proposes an on-chain step; a human co-signs it on a hardware wallet. Hardware wallets clear-sign plain-text personal messages, but need per-contract descriptors to clear-sign calldata or EIP-712 payloads and otherwise fall back to blind signing. This spec defines a canonical **human-readable text** that binds every security-relevant parameter of a step, so the device screen is a faithful description of what will execute and the contract can rebuild and verify the same bytes.
+
+## Message
+
+Nine lines joined by `\n`, no trailing newline, ASCII only:
+
+```text
+Mandate approval
+Account: <account>
+Chain: <chainId>
+Plan: <planId>
+Step: <step>
+Max USDC out: <maxUsdcOut>
+Calls: <callsHash>
+Deadline: <deadline>
+Nonce: <nonce>
+```
+
+| Field | Encoding | Binds |
+|---|---|---|
+| `account` | lowercase `0x` + 40 hex | the executing account |
+| `chainId` | decimal | the chain |
+| `planId` | `0x` + 64 hex, lowercase | the plan; the SDK uses `keccak256(utf8(planIdString))` |
+| `step` | decimal `uint8` | the step index |
+| `maxUsdcOut` | decimal with exactly six fractional digits, e.g. `500.250000` | binding maximum USDC leaving the account; the contract reverts `MaxOutExceeded` if measured gross outflow exceeds it |
+| `callsHash` | `0x` + 64 hex | `keccak256(abi.encode(Call[]))` with `Call{address target; uint256 value; bytes data}` |
+| `deadline` | decimal unix seconds | validity; `ApprovalExpired` after it |
+| `nonce` | decimal | the account's `guardianNonce` at signing; consumed on use |
+
+## Signing
+
+`signature = personal_sign(text)` (EIP-191: `"\x19Ethereum Signed Message:\n" + len(text) + text`), 65 bytes `r ‖ s ‖ v` with `v ∈ {27, 28}`.
+
+## Verification, on-chain
+
+```text
+text   = approvalText(planId, step, maxUsdcOut, callsHash, deadline, guardianNonce)   // rebuilt from typed arguments
+digest = keccak256("\x19Ethereum Signed Message:\n" ‖ len(text) ‖ text)
+require(ecrecover(digest, sig) == guardian)
+guardianNonce += 1
+require(!executed[planId][step]); executed[planId][step] = true
+run calls; require(measuredGrossOutflow <= maxUsdcOut)
+```
+
+The verifier must not accept the text from the caller. It rebuilds it from typed arguments so that what was displayed is what executes.
+
+## Security considerations
+
+- **Replay**: nonce (single use), per-step `executed` flag, deadline.
+- **Cross-chain and cross-account**: `chainId` and `account` are in the text.
+- **Substitution**: `callsHash` binds targets, values and calldata; changing any byte invalidates the signature.
+- **Over-spend**: `maxUsdcOut` is enforced against measured outflow, not against the agent's declaration.
+- **Allow-list**: a guardian signature does not lift the owner's allow-list.
+- **Display**: keep the text ASCII and under about 300 bytes so every hardware wallet paginates it legibly.
+
+## Test vectors
+
+**Vector A** (Solidity unit-test fixture): account `0x5c538163cd0934d079a438a8c8e3c5383aa6756d`, chain 84532, plan `0x…0abc`, step 3, `maxUsdcOut` 500250000, `callsHash` `0x…1234`, deadline 1757000000, nonce 7:
+
+```text
+Mandate approval
+Account: 0x5c538163cd0934d079a438a8c8e3c5383aa6756d
+Chain: 84532
+Plan: 0x0000000000000000000000000000000000000000000000000000000000000abc
+Step: 3
+Max USDC out: 500.250000
+Calls: 0x0000000000000000000000000000000000000000000000000000000000001234
+Deadline: 1757000000
+Nonce: 7
+```
+
+**Vector B** (live, Sept 9 2026, signed on a Ledger and verified on Base Sepolia): account `0x874f26e1b441896061d6a0be95503f6c386ea878`, chain 84532, step 2, `maxUsdcOut` 10.000000, nonce 2. `GuardianApproved` in transaction [`0x2192fcb1…ce1054`](https://sepolia.basescan.org/tx/0x2192fcb110f657c8e5fcd26e57aca8594ffc56a944842442d2038b5bedce1054).
+
+## Reference implementations
+
+- Solidity: `contracts/src/MandateAccount.sol` (`approvalText`, `_consumeGuardianApproval`, `_runMeasured`).
+- TypeScript: `@yashjain99/mandate-sdk` (`approvalText`, `callsHash`, `verifyGuardianSignature`, `MandateClient.approvals`).

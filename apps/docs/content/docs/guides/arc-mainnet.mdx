@@ -1,0 +1,25 @@
+---
+title: Arc mainnet checklist
+description: What changes when Arc's public mainnet is live, and what already works.
+---
+
+Arc public mainnet launches after the hackathon deadline. The code is parameterized by chain; the checklist is short.
+
+## Already in place
+
+- `contracts/script/Deploy.s.sol` branches on `block.chainid == 5042` and reads `ARC_USDC` from the environment.
+- `packages/core/src/chains.ts` and `addresses.ts` are keyed by chain id. Adding the mainnet RPC and USDC address, and redeploying with the same factory salt, yields the same factory and account addresses on Base mainnet and Arc mainnet.
+- CCTP v2 addresses are constants in `addresses.ts`; the Arc mainnet domain id and contracts will be taken from Circle's documentation at launch. Confirm the domain before changing `DOMAINS`.
+- Circle developer-controlled wallets do not yet list Arc mainnet in the SDK's blockchain enum; until they do, the local agent wallet is the mainnet path.
+
+## Steps at launch
+
+1. Add `ARC_RPC` and `ARC_USDC` to `.env`; add a `mainnet` chain entry in `chains.ts`.
+2. `forge script script/Deploy.s.sol --rpc-url arc --broadcast`, then on Base mainnet. Check both `account:` lines match.
+3. Apply a conservative mandate: small caps, short expiry, and the presets with real mainnet addresses for Comet and CCTP.
+4. Run the fork test against Base mainnet before any live step.
+5. Record factory, account and the first `execute` transaction here.
+
+## Deployment record
+
+To be filled at launch.

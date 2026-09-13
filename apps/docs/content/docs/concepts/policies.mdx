@@ -1,0 +1,77 @@
+---
+title: Policies
+description: The on-chain allow-list of target and selector pairs, with a tri-state and a wildcard.
+---
+
+Every call the agent routes through the account is checked against `policies[target][selector]` before it runs.
+
+## The policy struct
+
+```solidity
+struct Policy {
+  bool set;              // explicit entry (allow or deny) vs. unset (fall back to wildcard)
+  bool allowed;
+  bool requiresGuardian; // true: only executeWithGuardian may run this call
+}
+```
+
+Lookup order for a call `(target, data)`:
+
+1. `selector = data[:4]`, or `0x00000000` when `data` is shorter than four bytes (a plain value transfer).
+2. If `policies[target][selector].set`, use it.
+3. Otherwise use `policies[address(0)][selector]`, the wildcard for that selector on any target.
+
+Because `set` is stored, an explicit deny on one target beats a wildcard allow. The owner can allow native payments to anyone on Arc yet block one specific address. `clearPolicy(target, selector)` removes the explicit entry and restores the fallback.
+
+## Agent-only versus guardian
+
+`execute` requires every call to be `allowed && !requiresGuardian`; otherwise it reverts with `GuardianRequired(target, selector)`. `executeWithGuardian` requires only `allowed`; a guardian signature never lifts the allow-list (`CallNotAllowed`).
+
+## Owner functions
+
+| Function | Purpose |
+|---|---|
+| `setPolicy(target, selector, allowed, requiresGuardian)` | one entry |
+| `setPolicies(PolicyInput[])` | many entries in one transaction |
+| `clearPolicy(target, selector)` | remove an explicit entry |
+| `policyFor(target, selector)` | view: the effective policy after fallback |
+
+The SDK ships the same as calldata builders in `ownerEncoders`, so any wallet can sign them, and `policyPresets.forChain(chainId)` returns the shipped defaults.
+
+## The shipped presets
+
+Reversible protocol interactions are agent-only. Anything that sends value away is guardian-required.
+
+### Base Sepolia (`policyPresets.compoundV3BaseSepolia()`)
+
+| Target | Selector | Agent alone? |
+|---|---|---|
+| WETH `0x4200…0006` | `deposit()` | yes |
+| WETH | `approve(address,uint256)` | yes |
+| Comet cUSDCv3 `0x5716…f017` | `supply(address,uint256)` | yes |
+| Comet | `withdraw(address,uint256)` | yes (this is how a borrow is drawn) |
+| USDC `0x036C…cF7e` | `approve(address,uint256)` | yes |
+| CCTP TokenMessengerV2 | `depositForBurn(...)` | **guardian** |
+| USDC | `transfer(address,uint256)` | **guardian** |
+| CCTP MessageTransmitterV2 | `receiveMessage(bytes,bytes)` | yes |
+
+### Arc testnet (`policyPresets.arcTestnet()`)
+
+| Target | Selector | Agent alone? |
+|---|---|---|
+| CCTP MessageTransmitterV2 | `receiveMessage(bytes,bytes)` | yes |
+| USDC view `0x3600…0000` | `approve(address,uint256)` | yes |
+| USDC view | `transfer(address,uint256)` | **guardian** |
+| wildcard `address(0)` | `0x00000000` (native value transfer to anyone) | **guardian** |
+| CCTP TokenMessengerV2 | `depositForBurn(...)` | **guardian** |
+
+Note what is missing: there is no entry that lets the agent call an arbitrary contract, and no entry that lets it move USDC to a third party without a tap.
+
+## Writing a policy for your protocol
+
+Rules of thumb from the [Add a protocol](/docs/guides/add-a-protocol) guide:
+
+- Approvals and interactions whose value stays recoverable by the owner: agent-only.
+- Anything that sends value to a third party or across chains: `requiresGuardian: true`.
+- Prefer specific targets over the wildcard. Use the wildcard only for `0x00000000` native payments where the recipient is genuinely open.
+- Remember that caps are measured on gross outflow per call, so an adapter cannot hide a payment behind an inflow even if the policy allowed both.

@@ -1,0 +1,109 @@
+---
+title: Deploy an account
+description: Foundry scripts for Base Sepolia and Arc testnet, one address on both chains.
+---
+
+Everything here is testnet only. Never put a mainnet key in `.env`.
+
+## Before you start
+
+| Item | Where | Why |
+|---|---|---|
+| Node 22, pnpm 10, Foundry (`forge`, `cast`) | [getfoundry.sh](https://getfoundry.sh) | build, test, deploy |
+| Three throwaway keys: deployer/owner, agent, optional dev guardian | `cast wallet new` three times | the roles |
+| Your Ledger's first Ethereum address | Ledger Live, or the console once running | the guardian |
+| Subgraph Studio API key | [thegraph.com/studio](https://thegraph.com/studio) | live rates |
+
+Testnet funds (start early, faucets are slow):
+
+| Wallet | Chain | Needs | Source |
+|---|---|---|---|
+| Deployer/owner | Base Sepolia | about 0.02 ETH | [Alchemy faucet](https://www.alchemy.com/faucets/base-sepolia), [Coinbase faucet](https://portal.cdp.coinbase.com/products/faucet) |
+| Deployer/owner | Arc testnet | about 5 USDC (gas) | [faucet.circle.com](https://faucet.circle.com), Arc Testnet |
+| Agent | Base Sepolia | about 0.01 ETH | as above |
+| Agent | Arc testnet | about 5 USDC | as above |
+| The account (known after deploy) | Base Sepolia | at least 0.06 ETH as collateral for a 100 USDC borrow | as above |
+
+## 1. Clone, install, test
+
+```bash
+git clone --recursive https://github.com/yashj09/mandate && cd mandate
+pnpm install                       # also builds the sdk, ai and mcp packages
+cd contracts && forge test         # 28 unit tests, no network
+BASE_SEPOLIA_RPC=https://sepolia.base.org forge test --match-contract Fork -vv
+```
+
+The fork test supplies WETH, borrows real Circle USDC through the account and executes a guardian-signed CCTP burn. Its log prints the exact text a Ledger would display.
+
+## 2. Fill `.env`
+
+```bash
+cp .env.example .env
+```
+
+At minimum: `DEPLOYER_PRIVATE_KEY`, `OWNER_PRIVATE_KEY` (same key for the demo), `OWNER_ADDRESS`, `AGENT_PRIVATE_KEY`, `AGENT_ADDRESS`, `GUARDIAN_ADDRESS`, `GRAPH_API_KEY`. `GUARDIAN_ADDRESS` is used **only by the deploy script**; afterwards every runtime reads `guardian()` from the chain.
+
+Foundry reads `.env` from `contracts/`, not the workspace root. Either export the root file into your shell or wrap the command:
+
+```bash
+set -a && source .env && set +a
+# or, from packages/core:
+pnpm exec tsx scripts/with-env.ts --cwd ../../contracts -- forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast
+```
+
+Missing keys can be generated straight into `.env` without appearing on screen: `cd packages/core && pnpm exec tsx scripts/ensure-keys.ts`.
+
+## 3. Deploy on both chains
+
+```bash
+cd contracts && set -a && source ../.env && set +a
+forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast
+forge script script/Deploy.s.sol --rpc-url arc_testnet  --broadcast
+```
+
+Each run prints `factory:` and `account:` and writes `deployments/base-sepolia.json` or `deployments/arc-testnet.json`. The two account addresses **must be identical**. If they differ, `.env` changed between runs or `ACCOUNT_SALT` differs.
+
+What the script does: deploys `MandateFactory(admin)` through the canonical CREATE2 deployer with salt `keccak256("mandate.factory.v1")`, calls `configure(usdc, nativeIsUsdc)` once, then `createAccount(owner, guardian, agent, salt)`. On a chain where the factory already exists it skips straight to the account.
+
+Put the address in `.env` as `ACCOUNT=0x…` (the SDK also accepts `MANDATE_ACCOUNT`). Verify on [Basescan](https://sepolia.basescan.org) and [Arcscan](https://testnet.arcscan.app).
+
+## 4. Apply the default mandate and policy
+
+```bash
+forge script script/SetPolicy.s.sol --rpc-url base_sepolia --broadcast
+forge script script/SetPolicy.s.sol --rpc-url arc_testnet  --broadcast
+```
+
+Defaults: 100 USDC per transaction, 500 USDC per 24 hours, seven days, and the [shipped policy presets](/docs/concepts/policies#the-shipped-presets). Override with `PER_TX_CAP`, `DAILY_CAP` (6-decimal units) and `EXPIRY_DAYS`. Details in [Set caps and policies](/docs/guides/set-policies).
+
+## 5. Fund the account with collateral
+
+```bash
+cast send $ACCOUNT --value 0.06ether --private-key $DEPLOYER_PRIVATE_KEY --rpc-url $BASE_SEPOLIA_RPC
+cast balance $ACCOUNT --rpc-url $BASE_SEPOLIA_RPC
+```
+
+The account has a `receive()` function; a plain transfer works.
+
+## 6. Sanity checks
+
+```bash
+cast call $ACCOUNT "mandate()(uint128,uint128,uint64)" --rpc-url $BASE_SEPOLIA_RPC
+cast call $ACCOUNT "guardian()(address)"               --rpc-url $BASE_SEPOLIA_RPC
+cast call $ACCOUNT "agent()(address)"                  --rpc-url $ARC_TESTNET_RPC
+```
+
+## 7. First run without AI or a Ledger
+
+The scripted end-to-end uses `GUARDIAN_PRIVATE_KEY` as a stand-in guardian. Make sure the on-chain guardian equals that key's address for this run.
+
+```bash
+cd packages/core && set -a && source ../../.env && set +a
+BORROW_USDC=10 pnpm e2e
+```
+
+Five steps with explorer links: borrow, guardian-signed burn, mint on Arc, guardian-signed payment to `RECIPIENT`, repayment scheduled. Then move on to [Ledger](/docs/guides/ledger) and [Run the console](/docs/guides/run-console).
+
+## Deploying from your own code
+
+You do not need Foundry to create accounts once a factory exists. The SDK exposes `encodeCreateAccount(owner, guardian, agent, salt)` and `computeAccountAddress(factory, owner, guardian, agent, salt)`; send the calldata to the factory from any wallet.

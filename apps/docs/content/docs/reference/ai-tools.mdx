@@ -1,0 +1,53 @@
+---
+title: AI tools
+description: "@yashjain99/mandate-ai: Vercel AI SDK tools, the approval policy, MCP registration, the system prompt and the cron check."
+---
+
+```bash
+npm i @yashjain99/mandate-ai @yashjain99/mandate-sdk ai zod
+```
+
+## `mandateTools(client): ToolSet`
+
+| Tool | Input | Output (key fields) |
+|---|---|---|
+| `get_positions` | `{}` | `account, agent, guardian, baseSepolia{eth,usdc}, arc{usdcNative}, compound{debtUsdc,healthFactor,liquidationPriceUsd,borrowAprPct}, mandate{perTxCapUsdc,dailyCapUsdc,dailyRemainingUsdc,expiresAt,active}` |
+| `get_markets` | `{ amountUsdc }` | `table[]{venueId,borrowAprPct,utilizationPct,availableUsd,executableOn}`, `recommended`, `cheapestMainnet`, `explanation`, `warnings` |
+| `draft_plan` | `{ intent: Intent }` | `planId`, `steps[]{step,kind,title,reversible,requiresGuardian,maxUsdcOut,status}`, `projected{healthFactor,liquidationPriceUsd}` |
+| `simulate_plan` | `{ planId }` | `results[]{step,ok,deferred,revertReason}`, `verified`, `deferred`, `failed` |
+| `execute_step` | `{ planId, step }` | `ok, txHash, explorer, summary, healthFactor?, mintedUsdc?`, or `awaitingGuardian: true`, or `error` |
+| `check_repayments` | `{}` | `repayments[]{id,dueAt,amountUsdc,done,daysLeft,overdue}`, `currentDebtUsdc`, `healthFactor` |
+| `draft_repayment_plan` | `{ intent: RepayIntent }` | plan summary |
+| `get_plan` | `{ planId }` | plan summary with per-step status |
+| `get_audit` | `{ planId? }` | audit entries |
+
+`Intent` and `RepayIntent` are the zod schemas from the SDK ([Plans, steps and intents](/docs/reference/sdk/plans)), so the model fills a validated object.
+
+`execute_step` strips the approval text from its result; the UI fetches the text server-side so the model cannot be fed a forged version.
+
+## `mandateToolApproval(client)`
+
+A `toolApproval` function for `streamText` and friends. Returns `"user-approval"` for an `execute_step` call whose step requires the guardian and is not done, and `undefined` otherwise. Pair it with `experimental_toolApprovalSecret` so approvals cannot be forged client-side.
+
+## `summarizePlan(plan)`
+
+The JSON shape returned by `draft_plan`, `get_plan` and `draft_repayment_plan`; useful for rendering plan cards.
+
+## `registerMandateMcpTools(server, clientOrFactory)`
+
+Registers the nine tools above plus two MCP-only ones on any `McpServer`-like object, returns `{ instructions }`:
+
+| Tool | Input | Purpose |
+|---|---|---|
+| `prepare_step` | `{ planId, step }` | executes agent-only steps; for guardian steps returns `approval{text,guardian,chainId,deadline,nonce}` |
+| `submit_guardian_signature` | `{ planId, step, signature }` | verifies and stores the signature; only the signature is accepted from the client |
+
+Pass a factory (`() => createMandateFromEnv()`) to defer client construction until the first tool call, so the MCP handshake succeeds even when configuration is missing and the error reaches the model as a tool result.
+
+## `MANDATE_SYSTEM_PROMPT`
+
+The operating instructions: the liquidity workflow (positions, markets, draft, simulate, execute one step at a time), the repayment workflow, the rule to explain the Ledger screen before a guardian step, and the style rules (concrete numbers, never invent hashes, distinguish autonomous from tapped). Also exported as `SYSTEM_PROMPT`. Use it as `system` and as the MCP server's `instructions`.
+
+## `runRepaymentCheck(client, remindDays = 2)`
+
+Reads the Arc account's repayment intents, writes an audit entry for each one due within `remindDays` or overdue, and returns `{ checkedAt, due, healthFactor, currentDebtUsdc }`. It never moves money. The console's `/api/cron` calls it daily.

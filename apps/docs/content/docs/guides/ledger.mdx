@@ -1,0 +1,72 @@
+---
+title: Ledger as guardian
+description: Browser (WebHID) and Node (USB), blind signing off, and what the device shows.
+---
+
+## Set up the device
+
+1. Update the **Ethereum** app in Ledger Live. Close Ledger Live afterwards; it holds the USB device.
+2. In the Ethereum app settings leave **Blind signing off**. Mandate never needs it; approvals are plain text.
+3. Find the address: Ledger Live → Ethereum account → Receive, or click *Approve on Ledger* once in the console; the error names the connected address if it does not match the on-chain guardian.
+4. Point the account at it on **both chains**:
+
+```bash
+cast send $ACCOUNT "setGuardian(address)" $LEDGER --private-key $OWNER_PRIVATE_KEY --rpc-url $BASE_SEPOLIA_RPC
+cast send $ACCOUNT "setGuardian(address)" $LEDGER --private-key $OWNER_PRIVATE_KEY --rpc-url $ARC_TESTNET_RPC
+```
+
+Leave `GUARDIAN_PRIVATE_KEY`, `MANDATE_GUARDIAN_KEY` and `NEXT_PUBLIC_DEV_GUARDIAN_KEY` empty.
+
+## In the browser (console)
+
+The console uses Ledger's Device Management Kit over **WebHID**, which works in Chromium browsers on HTTPS or localhost. The approval sheet:
+
+1. fetches the approval text from the server (built once per plan, step and nonce, so refreshes and second tabs show the same text);
+2. opens the device, checks the Ethereum app is open, and shows the exact text on screen;
+3. calls `signPersonalMessage`; the Ledger paginates the nine lines;
+4. posts `{ planId, step, signature }`; the server recovers the signer and compares it to the on-chain guardian.
+
+```ts
+import { ledgerWebGuardian } from "@yashjain99/mandate-sdk/ledger-web";
+const guardian = ledgerWebGuardian();               // derivation path 44'/60'/0'/0/0 by default
+const signature = await guardian.signMessage(text, (status) => console.log(status));
+```
+
+## In Node (scripts, servers)
+
+```ts
+import { createMandateFromEnv, ledgerNodeGuardian } from "@yashjain99/mandate-sdk";
+const client = createMandateFromEnv({ guardian: ledgerNodeGuardian() });   // USB via node-hid
+await client.executeAll(plan);                                             // guardian steps prompt the device
+```
+
+Optional peers: `@ledgerhq/device-management-kit`, `@ledgerhq/device-signer-kit-ethereum`, `@ledgerhq/device-transport-kit-node-hid` (Node) or `-web-hid` (browser), `rxjs`.
+
+## What the device shows
+
+```text
+Mandate approval
+Account: 0x58612ce0945666cf58ca7e24808625a3cf10c5c3
+Chain: 84532
+Plan: 0x…
+Step: 2
+Max USDC out: 10.000000
+Calls: 0x…
+Deadline: 1788561704
+Nonce: 3
+```
+
+Read **Chain**, **Step** and **Max USDC out** before approving. The console shows the same text beside a plain-English description of the step.
+
+## Why not EIP-712 or calldata
+
+Mandate's contracts have no Crypto Assets List descriptors, so a contract call would require blind signing (SW `0x6a80` when it is disabled). EIP-712 without registered filters also falls back to blind signing. Personal messages are clear-signed in full. Feedback on this is recorded in the [Ledger sponsor page](/docs/sponsors/ledger).
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Device not listed in the Chrome prompt | close Ledger Live; unlock; open the Ethereum app; use Chrome, Edge or Brave |
+| `BadGuardianSignature` after approving | the device's address differs from `guardian()` on that chain; run `setGuardian` on both chains |
+| Signature rejected as stale | another guardian step consumed the nonce or 15 minutes passed; refresh and sign again |
+| Nothing on the device screen | the Ethereum app is not open, or the device locked |

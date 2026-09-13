@@ -1,0 +1,59 @@
+---
+title: Errors, addresses and chains
+description: Decoding contract reverts, and the constants the SDK ships.
+---
+
+## Errors
+
+```ts
+import { describeError, decodeMandateError, MandateError } from "@yashjain99/mandate-sdk";
+
+try { await client.execute(plan, 2); }
+catch (e) { console.log(describeError(e)); }   // "PerTxCapExceeded(5000000000, 100000000)"
+```
+
+| Function | Returns |
+|---|---|
+| `decodeMandateError(e)` | `MandateError \| null`; `code` is the contract's custom error name, `details.args` the decoded arguments |
+| `extractRevertData(e)` | the `0x…` revert data buried in a viem error chain |
+| `describeError(e)` | decoded custom error, else viem's short message, else `String(e)` |
+
+`client.execute` already applies this; `StepResult.error` is human-readable. The custom errors are listed in [Contracts](/docs/reference/contracts#errors).
+
+## Addresses
+
+```ts
+import { BASE_SEPOLIA, ARC_TESTNET, ARB_SEPOLIA, CCTP, DOMAINS, usdcFor, loadDeployment } from "@yashjain99/mandate-sdk";
+```
+
+| Export | Contents |
+|---|---|
+| `BASE_SEPOLIA` | `chainId 84532`, `usdc`, `weth`, `comet`, `domain 6` |
+| `ARC_TESTNET` | `chainId 5042002`, `usdc` (ERC-20 view), `domain 26` |
+| `ARB_SEPOLIA` | `chainId 421614`, `usdc`, `weth`, `aavePool`, `domain 3` |
+| `CCTP` | `tokenMessengerV2`, `messageTransmitterV2`, `irisSandbox`, `fastFinality 1000`, `standardFinality 2000` |
+| `DOMAINS` | `ethereumSepolia 0`, `arbitrumSepolia 3`, `baseSepolia 6`, `arcTestnet 26` |
+| `usdcFor(chainId)` | the USDC ERC-20 address for a supported chain |
+| `loadDeployment(name)` | reads `contracts/deployments/<name>.json` (`MANDATE_DEPLOYMENTS_DIR` overrides the directory) |
+
+Values are listed in [Chains and addresses](/docs/concepts/chains-and-addresses).
+
+## Chains
+
+```ts
+import { chains, arcTestnet, explorerTx } from "@yashjain99/mandate-sdk/chains";
+```
+
+`chains.baseSepolia`, `chains.arcTestnet`, `chains.arbitrumSepolia` are viem `Chain` objects whose default RPC honours `BASE_SEPOLIA_RPC`, `ARC_TESTNET_RPC` and `ARB_SEPOLIA_RPC`. `explorerTx(chain, hash)` builds an explorer URL. This subpath is browser-safe.
+
+## ABIs
+
+```ts
+import { MandateAccountAbi, MandateFactoryAbi, erc20Abi, wethAbi, cometAbi, tokenMessengerV2Abi, messageTransmitterV2Abi } from "@yashjain99/mandate-sdk/abi";
+```
+
+Generated from the Foundry build by `packages/core/scripts/gen-abi.ts`. Browser-safe.
+
+## Approval message helpers
+
+`approvalText(fields)`, `formatUsdc6(bigint)`, `callsHash(calls)`, `planIdToBytes32(id)` and `verifyGuardianSignature(guardian, text, signature)` implement [the spec](/docs/reference/approval-spec) byte for byte.

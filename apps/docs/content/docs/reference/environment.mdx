@@ -1,0 +1,73 @@
+---
+title: Environment variables
+description: Every variable read anywhere in the repo, grouped by who reads it.
+---
+
+One `.env` at the workspace root serves the contracts, the SDK, the console, the MCP server and the examples. Copy `.env.example` to start. Testnet keys only.
+
+## Chains
+
+| Variable | Read by | Purpose |
+|---|---|---|
+| `BASE_SEPOLIA_RPC` | SDK `chains.ts`, `env.ts`, fork test | Base Sepolia RPC; default `https://sepolia.base.org` |
+| `ARC_TESTNET_RPC` | SDK | Arc testnet RPC; default `https://rpc.testnet.arc.io` |
+| `ARB_SEPOLIA_RPC` | SDK | Arbitrum Sepolia RPC (future Aave executor) |
+| `MANDATE_RPC_<chainId>` | SDK `env.ts` | per-chain override that beats the two above |
+
+## Account and roles
+
+| Variable | Read by | Purpose |
+|---|---|---|
+| `MANDATE_ACCOUNT` (alias `ACCOUNT`) | SDK `env.ts`, `SetPolicy.s.sol` | the `MandateAccount` address |
+| `MANDATE_DEPLOYMENTS_DIR` | SDK `addresses.ts` | where `contracts/deployments/*.json` live when not in-repo |
+| `AGENT_PRIVATE_KEY` | SDK `env.ts` | the agent's local key; omit for read-only |
+| `AGENT_ADDRESS` | `Deploy.s.sol` | the agent address at deploy time |
+| `CIRCLE_API_KEY`, `CIRCLE_ENTITY_SECRET`, `CIRCLE_WALLET_SET_ID` | SDK `env.ts`, `scripts/circle-setup.ts` | Circle developer-controlled wallet; all three required to switch |
+| `DEPLOYER_PRIVATE_KEY`, `OWNER_ADDRESS`, `GUARDIAN_ADDRESS`, `ACCOUNT_SALT` | `Deploy.s.sol` | deploy-time only; the runtime reads `guardian()` from the chain |
+| `OWNER_PRIVATE_KEY`, `PER_TX_CAP`, `DAILY_CAP`, `EXPIRY_DAYS` | `SetPolicy.s.sol` | caps in 6-decimal units |
+| `ARC_USDC` | `Deploy.s.sol` | Arc mainnet USDC when deploying to chain 5042 |
+
+## Guardian (development only)
+
+| Variable | Read by | Purpose |
+|---|---|---|
+| `MANDATE_GUARDIAN_KEY` | SDK `env.ts` | auto-signing dev guardian for `createMandateFromEnv` |
+| `GUARDIAN_PRIVATE_KEY` | `scripts/e2e.ts`, `dev-sign-approval.ts`, examples | dev guardian for scripts |
+| `DEV_GUARDIAN_KEY` | `examples/vercel-ai-agent` | same, example only |
+| `NEXT_PUBLIC_DEV_GUARDIAN_KEY` | console `lib/ledger.ts` | approval sheet signs locally instead of with a Ledger |
+
+None of these belong in a production environment. The guardian is the Ledger.
+
+## Store
+
+| Variable | Read by | Purpose |
+|---|---|---|
+| `MANDATE_STORE_DIR` | SDK `env.ts`, console, MCP, agent scripts | `fileStore` directory |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | console `lib/agent.ts`, `lib/ratelimit.ts` | Redis store and rate limiter |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN` | console | the Vercel Marketplace spelling of the same |
+| `MANDATE_ENV_FILE` | MCP server | explicit `.env` path |
+
+## Data and model
+
+| Variable | Read by | Purpose |
+|---|---|---|
+| `GRAPH_API_KEY` | SDK, `probe-markets.ts` | The Graph gateway key |
+| `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | console `lib/model.ts`, examples | Anthropic API; default model `claude-opus-5` |
+| `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `BEDROCK_MODEL_ID` | console, examples | Amazon Bedrock alternative |
+
+## Console operations
+
+| Variable | Read by | Purpose |
+|---|---|---|
+| `TOOL_APPROVAL_SECRET` | `api/chat` | signs tool-approval tokens |
+| `CRON_SECRET`, `REMIND_DAYS` | `api/cron`, `scripts/cron.ts` | bearer for the cron route; reminder horizon (default 2) |
+| `MANDATE_EXECUTION_ENABLED` | `lib/agent.ts` | `false` disables `execute_step` |
+| `RL_CHAT_PER_10M`, `RL_CHAT_PER_DAY`, `RL_CHAT_GLOBAL_PER_DAY`, `RL_APPROVAL_POST_PER_10M`, `RL_APPROVAL_GET_PER_10M`, `RL_READ_PER_MIN` | `lib/ratelimit.ts` | rate-limit overrides |
+| `NEXT_PUBLIC_DOCS_URL` | console nav | link to this site |
+
+## Scripts and examples
+
+| Variable | Read by | Purpose |
+|---|---|---|
+| `RECIPIENT`, `AMOUNT_USDC`, `BORROW_USDC` | `scripts/e2e.ts`, `examples/node-script` | demo payee and amounts |
+| `AMOUNT` | `scripts/probe-markets.ts` | amount for the venue table |
