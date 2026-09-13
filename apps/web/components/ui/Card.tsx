@@ -9,7 +9,7 @@ export type CardProps = ComponentPropsWithoutRef<"div"> & {
   rotate?: number | false;
   /** Speech-bubble tail at the bottom-right (used for the user's chat messages). */
   speech?: boolean;
-  as?: "div" | "section" | "article" | "li";
+  as?: "div" | "section" | "article" | "aside" | "li";
   padding?: "none" | "sm" | "md" | "lg";
 };
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Bot, CheckCircle2, FileSignature, Fingerprint, Hand, Landmark, Network, ShieldCheck, Smartphone, type LucideIcon } from "lucide-react";
 import { LiveRates } from "@/components/landing/LiveRates";
 import { RecentReceipts } from "@/components/landing/RecentReceipts";
+import { FlowBoard } from "@/components/landing/FlowBoard";
 import { Card, Icon, Scribble, SketchHeading, Sticky, buttonClasses } from "@/components/ui";
 
 const BEATS: { icon: LucideIcon; title: string; body: string }[] = [
@@ -28,28 +29,31 @@ export default function LandingPage() {
   return (
     <div className="space-y-4">
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <section className="relative py-12 md:py-20">
+      <section className="relative py-12 md:grid md:grid-cols-[minmax(0,1fr)_22rem] md:items-center md:gap-12 md:py-20">
         <Scribble.CornerFrame className="hidden text-fg/40 md:block" />
-        <Sticky rotate={3} className="mb-6">bounded delegation for AI agents</Sticky>
-        <SketchHeading as="h1" className="max-w-4xl text-5xl md:text-7xl">
-          Claude spends.{" "}
-          You set the{" "}
-          <span className="whitespace-nowrap">
-            <span className="relative inline-block">
-              limits
-              <Scribble.DashedCircle className="absolute -left-3 -right-3 -top-2 -bottom-2 hidden h-[calc(100%+1rem)] w-[calc(100%+1.5rem)] text-ink md:block" />
+        <div>
+          <Sticky rotate={3} className="mb-6">bounded delegation for AI agents</Sticky>
+          <SketchHeading as="h1" className="text-5xl md:text-6xl">
+            Claude spends.{" "}
+            You set the{" "}
+            <span className="whitespace-nowrap">
+              <span className="relative inline-block">
+                limits
+                <Scribble.DashedCircle className="absolute -left-3 -right-3 -top-2 -bottom-2 hidden h-[calc(100%+1rem)] w-[calc(100%+1.5rem)] text-ink md:block" />
+              </span>
+              <Scribble.Bang />
             </span>
-            <Scribble.Bang />
-          </span>
-        </SketchHeading>
-        <p className="mt-6 max-w-2xl text-xl leading-relaxed text-fg/80 first-letter:float-left first-letter:mr-2 first-letter:font-heading first-letter:text-6xl first-letter:leading-none md:text-2xl">
-          Claude executes real on-chain financial actions for you, inside limits you set, with a hardware tap for anything irreversible.
-        </p>
-        <div className="relative mt-10 flex flex-wrap items-center gap-4">
-          <Scribble.Arrow className="absolute -top-20 -left-6 hidden h-24 w-32 animate-bounce-slow text-fg md:block" />
-          <Link href="/chat" className={buttonClasses("primary", "md", "text-xl")}>Open the console</Link>
-          <Link href="/mandate" className={buttonClasses("secondary", "md")}>Set a mandate</Link>
+          </SketchHeading>
+          <p className="mt-6 max-w-2xl text-xl leading-relaxed text-fg/80 first-letter:float-left first-letter:mr-2 first-letter:font-heading first-letter:text-6xl first-letter:leading-none md:text-2xl">
+            Claude executes real on-chain financial actions for you, inside limits you set, with a hardware tap for anything irreversible.
+          </p>
+          <div className="relative mt-10 flex flex-wrap items-center gap-4">
+            <Scribble.Arrow className="absolute -top-20 -left-6 hidden h-24 w-32 animate-bounce-slow text-fg md:block" />
+            <Link href="/chat" className={buttonClasses("primary", "md", "text-xl")}>Open the console</Link>
+            <Link href="/mandate" className={buttonClasses("secondary", "md")}>Set a mandate</Link>
+          </div>
         </div>
+        <FlowBoard className="mt-14 md:mt-0" />
       </section>
 
       {/* ── Hero loop: 5 beats, CSS-timed ───────────────────────────────── */}
@@ -104,7 +108,7 @@ export default function LandingPage() {
       <section className="py-12 md:py-20" aria-labelledby="rates-heading">
         <div className="mb-6 flex flex-wrap items-baseline gap-4">
           <h2 id="rates-heading"><Sticky rotate={2}>Live USDC borrow rates</Sticky></h2>
-          <p className="text-lg text-fg/70">The agent shops venues with one standardized query. This is the same table it reasons over.</p>
+          <p className="text-lg text-fg/70">The agent shops venues with one standardized query. This is the same data it reasons over, cheapest first.</p>
         </div>
         <LiveRates />
       </section>
